@@ -3,6 +3,12 @@
  * Meal-based calorie tracking with color-coded boxes.
  */
 
+import { 
+    db, auth, providers, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+    onAuthStateChanged, signOut, doc, getDoc, setDoc, onSnapshot,
+    collection, query, orderBy, limit, getDocs 
+} from './firebase.js';
+
 const STATE_VERSION = 3; // bump when schema changes
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'];
 
@@ -23,18 +29,39 @@ const BoxCal = {
         history: []
     },
 
+    user: null,
+    isSyncing: false,
     isLongPress: false,
+    unsubscribeSnapshot: null,
 
     // ── Init ───────────────────────────────────────────
     init() {
-        this.loadState();
+        this.loadLocalState();
         this.checkDailyReset();
         this.renderUI();
         this.setupEventListeners();
+        this.setupAuthListener();
+    },
+
+    setupAuthListener() {
+        onAuthStateChanged(auth, (user) => {
+            this.user = user;
+            this.updateSyncUI();
+            
+            if (user) {
+                this.startCloudSync();
+                document.getElementById('auth-modal').classList.remove('active');
+            } else {
+                if (this.unsubscribeSnapshot) {
+                    this.unsubscribeSnapshot();
+                    this.unsubscribeSnapshot = null;
+                }
+            }
+        });
     },
 
     // ── Persistence ────────────────────────────────────
-    loadState() {
+    loadLocalState() {
         const DEFAULT = {
             version: STATE_VERSION,
             settings: { dailyGoal: 2000, increment: 50 },
@@ -44,20 +71,17 @@ const BoxCal = {
 
         try {
             const raw = localStorage.getItem('box-cal-state');
-            if (!raw) { this.state = DEFAULT; this.saveState(); return; }
+            if (!raw) { this.state = DEFAULT; this.saveLocalState(); return; }
 
             const parsed = JSON.parse(raw);
 
-            // Clear stale state from old schema versions — version check handles all old formats
             if (!parsed.version || parsed.version < STATE_VERSION) {
-                console.info('Box-Cal: old state detected, resetting to fresh state.');
                 DEFAULT.history = Array.isArray(parsed.history) ? parsed.history : [];
                 this.state = DEFAULT;
-                this.saveState();
+                this.saveLocalState();
                 return;
             }
 
-            // Deep-merge with defaults so no key is ever undefined
             this.state = {
                 version: STATE_VERSION,
                 settings: { ...DEFAULT.settings, ...(parsed.settings || {}) },
@@ -65,12 +89,8 @@ const BoxCal = {
                 history: parsed.history || []
             };
 
-            // Migrate deprecated 25 increment to 50
-            if (this.state.settings.increment < 50) {
-                this.state.settings.increment = 50;
-            }
+            if (this.state.settings.increment < 50) this.state.settings.increment = 50;
 
-            // Safety checks
             if (typeof this.state.currentDay.filledBoxes !== 'object' || Array.isArray(this.state.currentDay.filledBoxes)) {
                 this.state.currentDay.filledBoxes = {};
             }
@@ -79,14 +99,200 @@ const BoxCal = {
             }
 
         } catch (e) {
-            console.error('Box-Cal: could not load state, resetting.', e);
+            console.error('Box-Cal: could not load local state.', e);
             this.state = DEFAULT;
-            this.saveState();
         }
     },
 
-    saveState() {
+    saveLocalState() {
         localStorage.setItem('box-cal-state', JSON.stringify(this.state));
+    },
+
+    async saveState() {
+        this.saveLocalState();
+        
+        if (this.user && !this.isSyncing) {
+            try {
+                await setDoc(doc(db, "users", this.user.uid), this.state);
+            } catch (e) {
+                console.error("Error saving to cloud:", e);
+            }
+        }
+    },
+
+    async startCloudSync() {
+        const docRef = doc(db, "users", this.user.uid);
+        
+        try {
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const serverData = docSnap.data();
+                const localData = this.state;
+                
+                // Check if local data is meaningful (has boxes or history)
+                const hasLocalData = Object.keys(localData.currentDay.filledBoxes).length > 0 || localData.history.length > 0;
+                
+                // Compare local and server (simple stringify check)
+                const isDifferent = JSON.stringify(serverData) !== JSON.stringify(localData);
+
+                if (hasLocalData && isDifferent) {
+                    this.showConflictModal(serverData);
+                    return; // Wait for user choice
+                } else {
+                    // No local data or data is same, just use server data
+                    this.state = serverData;
+                    this.saveLocalState();
+                    this.renderUI();
+                }
+            } else {
+                // No server data, push local data
+                await this.saveState();
+            }
+
+            this.setupRealtimeSync(docRef);
+        } catch (e) {
+            console.error("Cloud sync failed:", e);
+        }
+    },
+
+    setupRealtimeSync(docRef) {
+        if (this.unsubscribeSnapshot) this.unsubscribeSnapshot();
+
+        this.unsubscribeSnapshot = onSnapshot(docRef, (doc) => {
+            if (doc.exists() && !this.isSyncing) {
+                this.isSyncing = true;
+                const cloudData = doc.data();
+                if (JSON.stringify(cloudData) !== JSON.stringify(this.state)) {
+                    this.state = cloudData;
+                    this.saveLocalState();
+                    this.renderUI();
+                }
+                this.isSyncing = false;
+            }
+        });
+    },
+
+    showConflictModal(serverData) {
+        const modal = document.getElementById('conflict-modal');
+        const useServerBtn = document.getElementById('use-server-btn');
+        const useLocalBtn = document.getElementById('use-local-btn');
+        const logoutBtn = document.getElementById('conflict-logout');
+        
+        const handleChoice = async (useServer) => {
+            modal.classList.remove('active');
+            if (useServer) {
+                this.state = serverData;
+                this.saveLocalState();
+            } else {
+                // Keep local, push to server
+                await this.saveState();
+            }
+            this.renderUI();
+            this.setupRealtimeSync(doc(db, "users", this.user.uid));
+        };
+        
+        const handleLogout = async () => {
+            modal.classList.remove('active');
+            await signOut(auth);
+            location.reload();
+        };
+        
+        useServerBtn.onclick = () => handleChoice(true);
+        useLocalBtn.onclick = () => handleChoice(false);
+        logoutBtn.onclick = handleLogout;
+        
+        modal.classList.add('active');
+    },
+
+    async handleSync() {
+        if (this.user) {
+            const email = this.user.email || "Anonymous";
+            this.showConfirm(
+                "Logout", 
+                `Logged in as ${email}\n\nDo you want to log out?`,
+                async () => {
+                    await signOut(auth);
+                    location.reload();
+                }
+            );
+        } else {
+            this.showAuthError(''); // Clear previous errors
+            document.getElementById('auth-modal').classList.add('active');
+        }
+    },
+
+    showAuthError(msg) {
+        const errorEl = document.getElementById('auth-error');
+        if (!errorEl) return;
+        
+        if (msg) {
+            errorEl.textContent = msg;
+            errorEl.style.display = 'block';
+        } else {
+            errorEl.style.display = 'none';
+        }
+    },
+
+    async handleEmailLogin(isSignup) {
+        const email = document.getElementById('auth-email').value;
+        const pass  = document.getElementById('auth-password').value;
+
+        if (!email || !pass) { this.showAuthError('Please enter email and password.'); return; }
+        if (pass.length < 6) { this.showAuthError('Password must be at least 6 characters.'); return; }
+
+        this.showAuthError('');
+
+        try {
+            if (isSignup) {
+                await createUserWithEmailAndPassword(auth, email, pass);
+            } else {
+                await signInWithEmailAndPassword(auth, email, pass);
+            }
+        } catch (e) {
+            console.error("Auth failed:", e);
+            let msg = e.message;
+            if (e.code === 'auth/invalid-credential') msg = "Invalid email or password.";
+            if (e.code === 'auth/email-already-in-use') msg = "Email already in use.";
+            if (e.code === 'auth/weak-password') msg = "Password is too weak.";
+            this.showAuthError(msg);
+        }
+    },
+
+    updateSyncUI() {
+        const btn = document.getElementById('sync-btn');
+        const settingsUserInfo = document.getElementById('settings-user-info');
+        const footerUserInfo = document.getElementById('footer-user-info');
+        if (!btn) return;
+
+        const icon = btn.querySelector('[data-lucide]');
+        if (!icon) return;
+
+        if (this.user) {
+            btn.classList.add('active');
+            icon.setAttribute('data-lucide', 'cloud-check');
+            btn.setAttribute('aria-label', `Synced as ${this.user.email}`);
+            
+            if (settingsUserInfo) {
+                settingsUserInfo.innerHTML = `<i data-lucide="user"></i><span>${this.user.email}</span>`;
+                settingsUserInfo.style.display = 'flex';
+            }
+            if (footerUserInfo) {
+                footerUserInfo.textContent = `Logged in as ${this.user.email}`;
+            }
+        } else {
+            btn.classList.remove('active');
+            icon.setAttribute('data-lucide', 'cloud-off');
+            btn.setAttribute('aria-label', 'Sync to Cloud');
+            
+            if (settingsUserInfo) {
+                settingsUserInfo.style.display = 'none';
+            }
+            if (footerUserInfo) {
+                footerUserInfo.textContent = '';
+            }
+        }
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     getTodayDate() {
@@ -94,7 +300,7 @@ const BoxCal = {
     },
 
     // ── Daily Reset ────────────────────────────────────
-    checkDailyReset() {
+    async checkDailyReset() {
         const today = this.getTodayDate();
         if (this.state.currentDay.date === today) return;
 
@@ -102,15 +308,51 @@ const BoxCal = {
         const count = Object.keys(filled).length;
 
         if (count > 0) {
-            this.state.history.unshift({
+            const historyEntry = {
                 date: this.state.currentDay.date,
                 calories: count * this.state.settings.increment
-            });
-            this.state.history = this.state.history.slice(0, 14);
+            };
+
+            // Keep in local state for immediate view
+            this.state.history.unshift(historyEntry);
+            this.state.history = this.state.history.slice(0, 30); // Cache last 30 locally
+
+            // Save to dedicated sub-collection if logged in
+            if (this.user) {
+                try {
+                    const histRef = doc(db, "users", this.user.uid, "history", historyEntry.date);
+                    await setDoc(histRef, historyEntry);
+                } catch (e) {
+                    console.error("Error saving day history:", e);
+                }
+            }
         }
 
         this.state.currentDay = { date: today, filledBoxes: {}, activeMeal: 'breakfast' };
         this.saveState();
+    },
+
+    async fetchHistory() {
+        if (!this.user) return;
+
+        try {
+            const histRef = collection(db, "users", this.user.uid, "history");
+            const q = query(histRef, orderBy("date", "desc"), limit(50)); // Fetch last 50
+            const querySnapshot = await getDocs(q);
+            
+            const history = [];
+            querySnapshot.forEach((doc) => {
+                history.push(doc.data());
+            });
+
+            if (history.length > 0) {
+                this.state.history = history;
+                this.saveLocalState();
+                this.renderHistory();
+            }
+        } catch (e) {
+            console.error("Error fetching history:", e);
+        }
     },
 
     // ── Render ─────────────────────────────────────────
@@ -151,7 +393,6 @@ const BoxCal = {
         const goal = this.state.settings.dailyGoal;
         const inc  = this.state.settings.increment;
 
-        // Count boxes per meal
         const counts = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
         Object.values(this.state.currentDay.filledBoxes).forEach(meal => {
             if (counts[meal] !== undefined) counts[meal]++;
@@ -160,7 +401,6 @@ const BoxCal = {
         const total = Object.values(counts).reduce((a, b) => a + b, 0);
         if (total === 0) { bar.innerHTML = ''; return; }
 
-        // Build stacked segments
         bar.innerHTML = MEALS.map(meal => {
             const pct = Math.min(100, (counts[meal] * inc / goal) * 100);
             if (pct === 0) return '';
@@ -177,12 +417,8 @@ const BoxCal = {
         const maxIdx      = indices.length > 0 ? Math.max(...indices) : -1;
         const filledCount = indices.length;
 
-        // Base count is the goal boxes
         let count = goalBoxes;
 
-        // Expansion logic:
-        // 1. Show extra boxes if all default boxes are filled
-        // 2. OR keep showing them if there's at least one box filled in the expansion area
         if (filledCount >= goalBoxes || maxIdx >= goalBoxes) {
             const highestIdx = Math.max(maxIdx, goalBoxes - 1);
             const currentMaxRow = Math.ceil((highestIdx + 1) / 8) * 8;
@@ -233,7 +469,6 @@ const BoxCal = {
         const active = this.state.currentDay.activeMeal;
         const inc    = this.state.settings.increment;
 
-        // Count boxes per meal
         const counts = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
         Object.values(this.state.currentDay.filledBoxes).forEach(meal => {
             if (counts[meal] !== undefined) counts[meal]++;
@@ -251,6 +486,38 @@ const BoxCal = {
         });
     },
 
+    showConfirm(title, message, onConfirm) {
+        const modal = document.getElementById('confirm-modal');
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-message').textContent = message;
+        
+        const okBtn = document.getElementById('confirm-ok');
+        const cancelBtn = document.getElementById('confirm-cancel');
+        const closeBtn = document.getElementById('close-confirm');
+        
+        const cleanup = () => {
+            modal.classList.remove('active');
+            okBtn.removeEventListener('click', handleOk);
+            cancelBtn.removeEventListener('click', handleCancel);
+            closeBtn.removeEventListener('click', handleCancel);
+        };
+        
+        const handleOk = () => {
+            cleanup();
+            onConfirm();
+        };
+        
+        const handleCancel = () => {
+            cleanup();
+        };
+        
+        okBtn.onclick = handleOk;
+        cancelBtn.onclick = handleCancel;
+        closeBtn.onclick = handleCancel;
+        
+        modal.classList.add('active');
+    },
+
     // ── Interactions ───────────────────────────────────
     toggleBox(index) {
         if (this.isLongPress) return;
@@ -266,15 +533,13 @@ const BoxCal = {
         this.saveState();
         this.renderUI();
 
-        // Pop animation
         const boxes = document.querySelectorAll('.box');
         if (boxes[index]) {
             boxes[index].classList.remove('pop');
-            void boxes[index].offsetWidth; // force reflow
+            void boxes[index].offsetWidth;
             boxes[index].classList.add('pop');
         }
 
-        // Haptic
         if (navigator.vibrate) navigator.vibrate(12);
     },
 
@@ -286,6 +551,26 @@ const BoxCal = {
 
     // ── Event Listeners ────────────────────────────────
     setupEventListeners() {
+        // Sync button
+        document.getElementById('sync-btn').addEventListener('click', () => this.handleSync());
+
+        // Auth Modal listeners
+        const authModal = document.getElementById('auth-modal');
+        document.getElementById('close-auth').addEventListener('click', () => authModal.classList.remove('active'));
+        authModal.addEventListener('click', e => { if (e.target === authModal) authModal.classList.remove('active'); });
+
+        document.getElementById('login-google').addEventListener('click', () => {
+            signInWithPopup(auth, providers.google).catch(e => {
+                if (e.code === 'auth/unauthorized-domain') {
+                    this.showAuthError("Unauthorized Domain: Please add your URL to Firebase Console.");
+                } else {
+                    this.showAuthError(e.message);
+                }
+            });
+        });
+        document.getElementById('login-email').addEventListener('click', () => this.handleEmailLogin(false));
+        document.getElementById('signup-email').addEventListener('click', () => this.handleEmailLogin(true));
+
         // Meal selector
         document.querySelectorAll('.meal-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -295,7 +580,6 @@ const BoxCal = {
             });
         });
 
-        // Long press on grid → reset
         const grid = document.getElementById('box-grid');
         let pressTimer;
 
@@ -304,7 +588,11 @@ const BoxCal = {
             this.isLongPress = false;
             pressTimer = setTimeout(() => {
                 this.isLongPress = true;
-                if (confirm('Reset all boxes for today?')) this.resetDay();
+                this.showConfirm(
+                    'Reset Day',
+                    'Reset all boxes for today?',
+                    () => this.resetDay()
+                );
             }, 800);
         };
         const endPress = () => clearTimeout(pressTimer);
@@ -315,7 +603,6 @@ const BoxCal = {
         grid.addEventListener('touchend',   endPress);
         grid.addEventListener('mouseleave', endPress);
 
-        // Settings modal
         const modal      = document.getElementById('settings-modal');
         const goalInput  = document.getElementById('daily-goal');
 
@@ -323,7 +610,7 @@ const BoxCal = {
             goalInput.value = this.state.settings.dailyGoal;
             document.getElementById('cal-increment').value = this.state.settings.increment;
             modal.classList.add('active');
-            lucide.createIcons();
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         });
 
         document.getElementById('close-settings').addEventListener('click', () => modal.classList.remove('active'));
@@ -343,14 +630,12 @@ const BoxCal = {
             if (newGoal > 0 && newInc > 0) {
                 const oldInc = this.state.settings.increment;
                 
-                // If increment changed, try to convert existing boxes
                 if (newInc !== oldInc) {
                     const totals = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
                     Object.values(this.state.currentDay.filledBoxes).forEach(meal => {
                         if (totals[meal] !== undefined) totals[meal] += oldInc;
                     });
 
-                    // Reset and refill sequentially (resetting the grid layout)
                     this.state.currentDay.filledBoxes = {};
                     let nextIdx = 0;
                     MEALS.forEach(meal => {
@@ -371,20 +656,28 @@ const BoxCal = {
         });
 
         document.getElementById('reset-day-btn').addEventListener('click', () => {
-            if (confirm('Reset all boxes for today?')) {
-                this.resetDay();
-                modal.classList.remove('active');
-            }
+            this.showConfirm(
+                'Reset Day',
+                'Reset all boxes for today?',
+                () => {
+                    this.resetDay();
+                    modal.classList.remove('active');
+                }
+            );
         });
 
-        // History modal
         const historyModal = document.getElementById('history-modal');
         document.getElementById('history-btn').addEventListener('click', () => {
+            this.fetchHistory();
             historyModal.classList.add('active');
-            lucide.createIcons();
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         });
         document.getElementById('close-history').addEventListener('click', () => historyModal.classList.remove('active'));
         historyModal.addEventListener('click', e => { if (e.target === historyModal) historyModal.classList.remove('active'); });
+
+        // Close confirm modal on outside click
+        const confirmModal = document.getElementById('confirm-modal');
+        confirmModal.addEventListener('click', e => { if (e.target === confirmModal) confirmModal.classList.remove('active'); });
     }
 };
 
