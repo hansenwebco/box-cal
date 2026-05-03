@@ -485,7 +485,45 @@ input[type="number"] { -moz-appearance: textfield; }
 .btn-secondary:hover { color: var(--text-main); }
 
 /* ── Responsive ─────────────────────────────────── */
-@media (max-width: 380px) {
-    .box-grid { grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); }
-    .meal-btn .meal-label { font-size: 0.62rem; }
+@media (max-width: 480px) {
+    .app-container {
+        padding: 16px 16px 30px;
+        gap: 16px;
+    }
+    
+    .summary-card {
+        padding: 24px 20px;
+        gap: 12px;
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+    }
+}
+
+@media (max-width: 420px) {
+    .meal-selector {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+    
+    .meal-btn {
+        padding: 12px 10px;
+        min-height: 64px;
+    }
+}
+
+@media (max-width: 360px) {
+    .app-container {
+        padding: 12px 12px 24px;
+    }
+    
+    .box-grid {
+        grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+        gap: 8px;
+    }
+
+    .meal-btn .meal-label {
+        font-size: 0.65rem;
+    }
 }
