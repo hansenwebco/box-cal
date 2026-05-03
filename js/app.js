@@ -121,11 +121,24 @@ const BoxCal = {
         const count    = Object.keys(this.state.currentDay.filledBoxes).length;
         const consumed = count * this.state.settings.increment;
         const goal     = this.state.settings.dailyGoal;
-        const remaining = Math.max(0, goal - consumed);
 
-        document.getElementById('consumed-val').textContent  = consumed.toLocaleString();
-        document.getElementById('remaining-val').textContent = remaining.toLocaleString();
-        document.getElementById('goal-val').textContent      = goal.toLocaleString();
+        const consumedEl  = document.getElementById('consumed-val');
+        const remainingEl = document.getElementById('remaining-val');
+        const goalEl      = document.getElementById('goal-val');
+        const remLabel    = remainingEl.previousElementSibling;
+
+        consumedEl.textContent = consumed.toLocaleString();
+        goalEl.textContent     = goal.toLocaleString();
+
+        if (consumed > goal) {
+            remainingEl.textContent = (consumed - goal).toLocaleString();
+            if (remLabel) remLabel.textContent = 'Over';
+            remainingEl.classList.add('over-limit');
+        } else {
+            remainingEl.textContent = (goal - consumed).toLocaleString();
+            if (remLabel) remLabel.textContent = 'Remaining';
+            remainingEl.classList.remove('over-limit');
+        }
     },
 
     renderProgressBar() {
@@ -154,16 +167,28 @@ const BoxCal = {
         const grid = document.getElementById('box-grid');
         const filled = this.state.currentDay.filledBoxes;
 
-        const totalBoxes = Math.ceil(this.state.settings.dailyGoal / this.state.settings.increment);
-        const indices = Object.keys(filled).map(Number);
-        const maxIdx  = indices.length > 0 ? Math.max(...indices) : -1;
-        const count   = Math.max(totalBoxes, maxIdx + 1);
+        const goalBoxes = Math.ceil(this.state.settings.dailyGoal / this.state.settings.increment);
+        const indices   = Object.keys(filled).map(Number);
+        const maxIdx    = indices.length > 0 ? Math.max(...indices) : -1;
+
+        // Base count is the goal boxes
+        let count = goalBoxes;
+
+        // If the last box is reached or exceeded, expand in chunks of 8
+        if (maxIdx >= count - 1) {
+            const currentMaxRow = Math.ceil((maxIdx + 1) / 8) * 8;
+            count = currentMaxRow + 8;
+        }
 
         grid.innerHTML = '';
 
         for (let i = 0; i < count; i++) {
             const box = document.createElement('div');
             box.className = 'box';
+
+            if (i >= goalBoxes) {
+                box.classList.add('beyond-goal');
+            }
 
             const meal = filled[i];
             if (meal) {

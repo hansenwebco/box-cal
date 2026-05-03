@@ -144,6 +144,11 @@ h1 {
     font-weight: 600;
 }
 
+.stat-value.over-limit {
+    color: var(--dinner);
+    text-shadow: 0 0 12px hsla(28, 92%, 55%, 0.4);
+}
+
 .stat-divider {
     width: 1px;
     height: 56px;
@@ -275,15 +280,34 @@ h1 {
     content: '';
     position: absolute;
     inset: 0;
-    background: var(--box-meal-color, var(--accent));
+    background-color: var(--box-meal-color, var(--accent));
     opacity: 0;
     transform: scale(0.4);
     border-radius: inherit;
     transition: var(--transition);
 }
 
+.box.beyond-goal {
+    border-style: dashed;
+    border-color: hsla(28, 92%, 55%, 0.4);
+}
+
 .box.filled {
     border-color: transparent;
+}
+
+.box.filled.beyond-goal {
+    border: 1.5px solid hsla(28, 92%, 55%, 0.4);
+}
+
+.box.beyond-goal.filled::after {
+    background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.1) 4px,
+        transparent 4px,
+        transparent 8px
+    );
 }
 .box.filled::after {
     opacity: 1;
