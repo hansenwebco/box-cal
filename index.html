@@ -18,9 +18,14 @@
         <header>
             <div class="header-content">
                 <h1>Box-Cal</h1>
-                <button id="settings-btn" aria-label="Settings">
-                    <i data-lucide="settings"></i>
-                </button>
+                <div class="header-actions">
+                    <button id="history-btn" aria-label="Recent History">
+                        <i data-lucide="clock"></i>
+                    </button>
+                    <button id="settings-btn" aria-label="Settings">
+                        <i data-lucide="settings"></i>
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -49,33 +54,36 @@
             <!-- Meal selector -->
             <div class="meal-selector">
                 <button class="meal-btn active" id="meal-breakfast" data-meal="breakfast">
-                    <span class="meal-dot"></span>
-                    <span class="meal-label">Breakfast</span>
+                    <span class="meal-header"><span class="meal-dot"></span><span class="meal-label">Breakfast</span></span>
+                    <span class="meal-cals">0</span>
                 </button>
                 <button class="meal-btn" id="meal-lunch" data-meal="lunch">
-                    <span class="meal-dot"></span>
-                    <span class="meal-label">Lunch</span>
+                    <span class="meal-header"><span class="meal-dot"></span><span class="meal-label">Lunch</span></span>
+                    <span class="meal-cals">0</span>
                 </button>
                 <button class="meal-btn" id="meal-dinner" data-meal="dinner">
-                    <span class="meal-dot"></span>
-                    <span class="meal-label">Dinner</span>
+                    <span class="meal-header"><span class="meal-dot"></span><span class="meal-label">Dinner</span></span>
+                    <span class="meal-cals">0</span>
                 </button>
                 <button class="meal-btn" id="meal-snacks" data-meal="snacks">
-                    <span class="meal-dot"></span>
-                    <span class="meal-label">Snacks</span>
+                    <span class="meal-header"><span class="meal-dot"></span><span class="meal-label">Snacks</span></span>
+                    <span class="meal-cals">0</span>
                 </button>
             </div>
 
             <section id="box-grid" class="box-grid"></section>
         </main>
 
-        <section id="history-section" class="history-section collapsed">
-            <button id="history-toggle" class="history-toggle">
-                <span>Recent History</span>
-                <i data-lucide="chevron-up"></i>
-            </button>
-            <div id="history-list" class="history-list"></div>
-        </section>
+        <!-- History Modal -->
+        <div id="history-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Recent History</h2>
+                    <button id="close-history" class="icon-btn"><i data-lucide="x"></i></button>
+                </div>
+                <div id="history-list" class="history-list modal-history-list"></div>
+            </div>
+        </div>
 
         <!-- Settings Modal -->
         <div id="settings-modal" class="modal">

@@ -37,7 +37,7 @@ body {
 .app-container {
     max-width: 500px;
     margin: 0 auto;
-    padding: 20px 20px 120px;
+    padding: 20px 20px 40px;
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -67,7 +67,8 @@ h1 {
     letter-spacing: -0.5px;
 }
 
-#settings-btn {
+#settings-btn,
+#history-btn {
     background: var(--surface);
     border: 1px solid var(--glass-border);
     color: var(--text-main);
@@ -77,8 +78,16 @@ h1 {
     transition: var(--transition);
     display: flex; align-items: center; justify-content: center;
 }
-#settings-btn:hover { background: var(--surface-light); }
-#settings-btn:active { transform: scale(0.93); }
+#settings-btn:hover,
+#history-btn:hover  { background: var(--surface-light); }
+#settings-btn:active,
+#history-btn:active { transform: scale(0.93); }
+
+.header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
 
 /* ── Summary Card ───────────────────────────────── */
 .summary-card {
@@ -190,7 +199,7 @@ h1 {
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    padding: 10px 6px;
+    padding: 14px 8px 12px;
     background: var(--surface);
     border: 1.5px solid var(--glass-border);
     border-radius: var(--radius-md);
@@ -198,18 +207,37 @@ h1 {
     cursor: pointer;
     transition: var(--transition);
     font-family: inherit;
+    min-height: 68px;
+    justify-content: center;
+}
+
+/* Row 1: dot + label side by side */
+.meal-btn .meal-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .meal-btn .meal-dot {
-    width: 10px; height: 10px;
+    width: 9px; height: 9px;
     border-radius: 50%;
+    flex-shrink: 0;
     transition: var(--transition);
 }
 .meal-btn .meal-label {
-    font-size: 0.7rem;
-    font-weight: 600;
+    font-size: 0.72rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.6px;
+    line-height: 1;
+}
+
+/* Row 2: calorie total */
+.meal-btn .meal-cals {
+    font-size: 0.9rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
 }
 
 /* Per-meal dot + active colors */
@@ -228,9 +256,8 @@ h1 {
 /* ── Box Grid ───────────────────────────────────── */
 .box-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
-    gap: 8px;
-    margin-top: 4px;
+    grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+    gap: 10px;
 }
 
 .box {
@@ -278,44 +305,10 @@ h1 {
 }
 .box.pop { animation: pop 0.22s ease-out forwards; }
 
-/* ── History ────────────────────────────────────── */
-.history-section {
-    position: fixed;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 100%;
-    max-width: 500px;
-    background: var(--surface);
-    border-top-left-radius: var(--radius-lg);
-    border-top-right-radius: var(--radius-lg);
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 10;
-    box-shadow: 0 -10px 40px rgba(0,0,0,0.4);
-}
-
-.history-section.collapsed {
-    transform: translateX(-50%) translateY(calc(100% - 58px));
-}
-
-.history-toggle {
-    width: 100%;
-    padding: 16px 24px;
-    background: none;
-    border: none;
-    color: var(--text-main);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-    font-family: inherit;
-    font-weight: 600;
-    font-size: 0.95rem;
-}
-
-.history-list {
-    padding: 0 24px 24px;
-    max-height: 280px;
+/* ── History Modal ───────────────────────────────── */
+.modal-history-list {
+    padding: 0;
+    max-height: 360px;
     overflow-y: auto;
 }
 
@@ -323,7 +316,7 @@ h1 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 0;
+    padding: 13px 0;
     border-bottom: 1px solid var(--glass-border);
 }
 .history-item:last-child { border-bottom: none; }

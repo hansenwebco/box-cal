@@ -195,8 +195,23 @@ const BoxCal = {
 
     syncMealButtons() {
         const active = this.state.currentDay.activeMeal;
+        const inc    = this.state.settings.increment;
+
+        // Count boxes per meal
+        const counts = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
+        Object.values(this.state.currentDay.filledBoxes).forEach(meal => {
+            if (counts[meal] !== undefined) counts[meal]++;
+        });
+
         document.querySelectorAll('.meal-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.meal === active);
+            const meal = btn.dataset.meal;
+            btn.classList.toggle('active', meal === active);
+
+            const calsEl = btn.querySelector('.meal-cals');
+            if (calsEl) {
+                const total = counts[meal] * inc;
+                calsEl.textContent = total > 0 ? total.toLocaleString() + ' cal' : '—';
+            }
         });
     },
 
@@ -304,14 +319,14 @@ const BoxCal = {
             }
         });
 
-        // History toggle
-        const historySection = document.getElementById('history-section');
-        document.getElementById('history-toggle').addEventListener('click', () => {
-            const collapsed = historySection.classList.toggle('collapsed');
-            const icon = historySection.querySelector('[data-lucide]');
-            icon.setAttribute('data-lucide', collapsed ? 'chevron-up' : 'chevron-down');
+        // History modal
+        const historyModal = document.getElementById('history-modal');
+        document.getElementById('history-btn').addEventListener('click', () => {
+            historyModal.classList.add('active');
             lucide.createIcons();
         });
+        document.getElementById('close-history').addEventListener('click', () => historyModal.classList.remove('active'));
+        historyModal.addEventListener('click', e => { if (e.target === historyModal) historyModal.classList.remove('active'); });
     }
 };
 
