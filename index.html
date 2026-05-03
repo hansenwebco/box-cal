@@ -6,17 +6,14 @@
     <title>Box-Cal | Visual Calorie Tracking</title>
     <meta name="description" content="A minimalist, visual calorie tracking app using a tap-based box grid.">
     
-    <!-- Google Fonts: Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body class="theme-dark">
+<body>
     <div class="app-container">
         <header>
             <div class="header-content">
@@ -44,13 +41,32 @@
                 </div>
             </section>
 
+            <!-- Stacked progress bar -->
             <div class="progress-container">
                 <div id="progress-bar" class="progress-bar"></div>
             </div>
 
-            <section id="box-grid" class="box-grid">
-                <!-- Boxes will be generated here -->
-            </section>
+            <!-- Meal selector -->
+            <div class="meal-selector">
+                <button class="meal-btn active" id="meal-breakfast" data-meal="breakfast">
+                    <span class="meal-dot"></span>
+                    <span class="meal-label">Breakfast</span>
+                </button>
+                <button class="meal-btn" id="meal-lunch" data-meal="lunch">
+                    <span class="meal-dot"></span>
+                    <span class="meal-label">Lunch</span>
+                </button>
+                <button class="meal-btn" id="meal-dinner" data-meal="dinner">
+                    <span class="meal-dot"></span>
+                    <span class="meal-label">Dinner</span>
+                </button>
+                <button class="meal-btn" id="meal-snacks" data-meal="snacks">
+                    <span class="meal-dot"></span>
+                    <span class="meal-label">Snacks</span>
+                </button>
+            </div>
+
+            <section id="box-grid" class="box-grid"></section>
         </main>
 
         <section id="history-section" class="history-section collapsed">
@@ -58,9 +74,7 @@
                 <span>Recent History</span>
                 <i data-lucide="chevron-up"></i>
             </button>
-            <div id="history-list" class="history-list">
-                <!-- History items will be generated here -->
-            </div>
+            <div id="history-list" class="history-list"></div>
         </section>
 
         <!-- Settings Modal -->
@@ -88,7 +102,7 @@
                         </select>
                     </div>
                     <div class="form-actions">
-                        <button id="reset-day-btn" class="btn btn-secondary">Reset Today's Progress</button>
+                        <button id="reset-day-btn" class="btn btn-secondary">Reset Today</button>
                         <button id="save-settings" class="btn btn-primary">Save Changes</button>
                     </div>
                 </div>
@@ -97,9 +111,6 @@
     </div>
 
     <script src="js/app.js"></script>
-    <script>
-        // Initialize Lucide icons
-        lucide.createIcons();
-    </script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>
