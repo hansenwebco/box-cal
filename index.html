@@ -177,13 +177,15 @@
                 <div class="confirm-body">
                     <p>We found existing data on the server. Which data would you like to use?</p>
                     <div class="conflict-comparison">
-                        <div class="conflict-option">
+                        <div class="conflict-option" id="local-conflict-option">
                             <h3>Local Data</h3>
-                            <p>The data currently on this device.</p>
+                            <p>Data on this device.</p>
+                            <span id="local-updated" class="last-updated">Last updated: Never</span>
                         </div>
-                        <div class="conflict-option">
+                        <div class="conflict-option" id="server-conflict-option">
                             <h3>Server Data</h3>
-                            <p>The data saved in your cloud account.</p>
+                            <p>Data in cloud.</p>
+                            <span id="server-updated" class="last-updated">Last updated: Never</span>
                         </div>
                     </div>
                 </div>

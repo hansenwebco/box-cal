@@ -601,6 +601,32 @@ input[type="number"] { -moz-appearance: textfield; }
 .conflict-option p {
     font-size: 0.75rem !important;
     color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.last-updated {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--accent);
+    font-weight: 600;
+}
+.conflict-option.newest {
+    border-color: var(--accent);
+    background: hsla(200, 85%, 55%, 0.05);
+    box-shadow: 0 0 15px hsla(200, 85%, 55%, 0.1);
+}
+.conflict-option.newest h3 {
+    color: var(--accent);
+}
+.conflict-option.newest::after {
+    content: 'NEWER';
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 8px;
+    font-weight: 800;
 }
 
 /* ── Responsive ─────────────────────────────────── */

@@ -26,11 +26,13 @@ const BoxCal = {
             filledBoxes: {},
             activeMeal: 'breakfast'
         },
-        history: []
+        history: [],
+        lastUpdated: 0
     },
 
     user: null,
     isSyncing: false,
+    isLoggingIn: false,
     isLongPress: false,
     unsubscribeSnapshot: null,
 
@@ -66,7 +68,8 @@ const BoxCal = {
             version: STATE_VERSION,
             settings: { dailyGoal: 2000, increment: 50 },
             currentDay: { date: this.getTodayDate(), filledBoxes: {}, activeMeal: 'breakfast' },
-            history: []
+            history: [],
+            lastUpdated: 0
         };
 
         try {
@@ -86,7 +89,8 @@ const BoxCal = {
                 version: STATE_VERSION,
                 settings: { ...DEFAULT.settings, ...(parsed.settings || {}) },
                 currentDay: { ...DEFAULT.currentDay, ...(parsed.currentDay || {}) },
-                history: parsed.history || []
+                history: parsed.history || [],
+                lastUpdated: parsed.lastUpdated || 0
             };
 
             if (this.state.settings.increment < 50) this.state.settings.increment = 50;
@@ -104,7 +108,10 @@ const BoxCal = {
         }
     },
 
-    saveLocalState() {
+    saveLocalState(skipTimestamp = false) {
+        if (!skipTimestamp) {
+            this.state.lastUpdated = Date.now();
+        }
         localStorage.setItem('box-cal-state', JSON.stringify(this.state));
     },
 
@@ -129,30 +136,88 @@ const BoxCal = {
                 const serverData = docSnap.data();
                 const localData = this.state;
                 
-                // Check if local data is meaningful (has boxes or history)
-                const hasLocalData = Object.keys(localData.currentDay.filledBoxes).length > 0 || localData.history.length > 0;
-                
-                // Compare local and server (simple stringify check)
-                const isDifferent = JSON.stringify(serverData) !== JSON.stringify(localData);
-
-                if (hasLocalData && isDifferent) {
-                    this.showConflictModal(serverData);
-                    return; // Wait for user choice
-                } else {
-                    // No local data or data is same, just use server data
-                    this.state = serverData;
-                    this.saveLocalState();
-                    this.renderUI();
+                // If they JUST logged in via button/form, we ask for a decision
+                if (this.isLoggingIn) {
+                    const hasLocalData = Object.keys(localData.currentDay.filledBoxes).length > 0 || localData.history.length > 0;
+                    if (hasLocalData && this.isDifferent(localData, serverData)) {
+                        this.showConflictModal(serverData);
+                        this.isLoggingIn = false;
+                        return;
+                    }
                 }
+
+                // Otherwise (Refresh or No Conflict), do a silent smart merge
+                const merged = this.mergeStates(localData, serverData);
+                
+                let changedLocal = this.isDifferent(localData, merged);
+                let changedServer = this.isDifferent(serverData, merged);
+
+                if (changedLocal) {
+                    this.state = merged;
+                    this.saveLocalState(true);
+                }
+                
+                if (changedServer) {
+                    await setDoc(docRef, merged);
+                }
+
+                this.renderUI();
             } else {
                 // No server data, push local data
                 await this.saveState();
             }
 
+            this.isLoggingIn = false;
             this.setupRealtimeSync(docRef);
         } catch (e) {
             console.error("Cloud sync failed:", e);
         }
+    },
+
+    isDifferent(a, b) {
+        if (!a || !b) return true;
+        const aComp = { ...a };
+        const bComp = { ...b };
+        delete aComp.lastUpdated;
+        delete bComp.lastUpdated;
+        return JSON.stringify(aComp) !== JSON.stringify(bComp);
+    },
+
+    mergeStates(local, server) {
+        // 1. Settings (Take newest)
+        const settings = (local.lastUpdated >= server.lastUpdated) ? local.settings : server.settings;
+
+        // 2. Current Day
+        let currentDay;
+        if (local.currentDay.date === server.currentDay.date) {
+            // Same day: Merge boxes
+            currentDay = {
+                ...((local.lastUpdated >= server.lastUpdated) ? local.currentDay : server.currentDay),
+                filledBoxes: { ...server.currentDay.filledBoxes, ...local.currentDay.filledBoxes }
+            };
+        } else {
+            // Different days: take whichever is newer
+            currentDay = (local.lastUpdated >= server.lastUpdated) ? local.currentDay : server.currentDay;
+        }
+
+        // 3. History (Merge and unique by date)
+        const historyMap = {};
+        [...(server.history || []), ...(local.history || [])].forEach(entry => {
+            if (!historyMap[entry.date] || historyMap[entry.date].calories < entry.calories) {
+                historyMap[entry.date] = entry;
+            }
+        });
+        const history = Object.values(historyMap)
+            .sort((a, b) => b.date.localeCompare(a.date))
+            .slice(0, 50);
+
+        return {
+            version: Math.max(local.version || 0, server.version || 0),
+            settings,
+            currentDay,
+            history,
+            lastUpdated: Math.max(local.lastUpdated || 0, server.lastUpdated || 0)
+        };
     },
 
     setupRealtimeSync(docRef) {
@@ -162,9 +227,10 @@ const BoxCal = {
             if (doc.exists() && !this.isSyncing) {
                 this.isSyncing = true;
                 const cloudData = doc.data();
-                if (JSON.stringify(cloudData) !== JSON.stringify(this.state)) {
+                
+                if (this.isDifferent(cloudData, this.state)) {
                     this.state = cloudData;
-                    this.saveLocalState();
+                    this.saveLocalState(true);
                     this.renderUI();
                 }
                 this.isSyncing = false;
@@ -178,11 +244,40 @@ const BoxCal = {
         const useLocalBtn = document.getElementById('use-local-btn');
         const logoutBtn = document.getElementById('conflict-logout');
         
+        const localUpdatedEl = document.getElementById('local-updated');
+        const serverUpdatedEl = document.getElementById('server-updated');
+        const localOption = document.getElementById('local-conflict-option');
+        const serverOption = document.getElementById('server-conflict-option');
+
+        const formatTime = (ts) => {
+            if (!ts) return 'Never';
+            return new Date(ts).toLocaleString([], { 
+                month: 'short', day: 'numeric', 
+                hour: '2-digit', minute: '2-digit' 
+            });
+        };
+
+        const localTs = this.state.lastUpdated || 0;
+        const serverTs = serverData.lastUpdated || 0;
+
+        localUpdatedEl.textContent = `Last updated: ${formatTime(localTs)}`;
+        serverUpdatedEl.textContent = `Last updated: ${formatTime(serverTs)}`;
+
+        // Highlight newest
+        localOption.classList.remove('newest');
+        serverOption.classList.remove('newest');
+
+        if (localTs > serverTs) {
+            localOption.classList.add('newest');
+        } else if (serverTs > localTs) {
+            serverOption.classList.add('newest');
+        }
+        
         const handleChoice = async (useServer) => {
             modal.classList.remove('active');
             if (useServer) {
                 this.state = serverData;
-                this.saveLocalState();
+                this.saveLocalState(true);
             } else {
                 // Keep local, push to server
                 await this.saveState();
@@ -234,6 +329,7 @@ const BoxCal = {
     },
 
     async handleEmailLogin(isSignup) {
+        this.isLoggingIn = true;
         const email = document.getElementById('auth-email').value;
         const pass  = document.getElementById('auth-password').value;
 
@@ -560,6 +656,7 @@ const BoxCal = {
         authModal.addEventListener('click', e => { if (e.target === authModal) authModal.classList.remove('active'); });
 
         document.getElementById('login-google').addEventListener('click', () => {
+            this.isLoggingIn = true;
             signInWithPopup(auth, providers.google).catch(e => {
                 if (e.code === 'auth/unauthorized-domain') {
                     this.showAuthError("Unauthorized Domain: Please add your URL to Firebase Console.");
