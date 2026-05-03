@@ -65,6 +65,11 @@ const BoxCal = {
                 history: parsed.history || []
             };
 
+            // Migrate deprecated 25 increment to 50
+            if (this.state.settings.increment < 50) {
+                this.state.settings.increment = 50;
+            }
+
             // Safety checks
             if (typeof this.state.currentDay.filledBoxes !== 'object' || Array.isArray(this.state.currentDay.filledBoxes)) {
                 this.state.currentDay.filledBoxes = {};
