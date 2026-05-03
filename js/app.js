@@ -339,7 +339,29 @@ const BoxCal = {
         document.getElementById('save-settings').addEventListener('click', () => {
             const newGoal = parseInt(goalInput.value);
             const newInc  = parseInt(document.getElementById('cal-increment').value);
+            
             if (newGoal > 0 && newInc > 0) {
+                const oldInc = this.state.settings.increment;
+                
+                // If increment changed, try to convert existing boxes
+                if (newInc !== oldInc) {
+                    const totals = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
+                    Object.values(this.state.currentDay.filledBoxes).forEach(meal => {
+                        if (totals[meal] !== undefined) totals[meal] += oldInc;
+                    });
+
+                    // Reset and refill sequentially (resetting the grid layout)
+                    this.state.currentDay.filledBoxes = {};
+                    let nextIdx = 0;
+                    MEALS.forEach(meal => {
+                        const boxCount = Math.round(totals[meal] / newInc);
+                        for (let i = 0; i < boxCount; i++) {
+                            this.state.currentDay.filledBoxes[nextIdx] = meal;
+                            nextIdx++;
+                        }
+                    });
+                }
+
                 this.state.settings.dailyGoal = newGoal;
                 this.state.settings.increment = newInc;
                 this.saveState();
