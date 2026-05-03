@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Box-Cal | Visual Calorie Tracking</title>
+    <meta name="description" content="A minimalist, visual calorie tracking app using a tap-based box grid.">
+    
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="theme-dark">
+    <div class="app-container">
+        <header>
+            <div class="header-content">
+                <h1>Box-Cal</h1>
+                <button id="settings-btn" aria-label="Settings">
+                    <i data-lucide="settings"></i>
+                </button>
+            </div>
+        </header>
+
+        <main>
+            <section class="summary-card">
+                <div class="stat-item">
+                    <span class="stat-label">Consumed</span>
+                    <span id="consumed-val" class="stat-value">0</span>
+                </div>
+                <div class="stat-divider"></div>
+                <div class="stat-item">
+                    <span class="stat-label">Remaining</span>
+                    <span id="remaining-val" class="stat-value">2,000</span>
+                </div>
+                <div class="stat-item goal-stat">
+                    <span class="stat-label">Goal</span>
+                    <span id="goal-val" class="stat-value secondary">2,000</span>
+                </div>
+            </section>
+
+            <div class="progress-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+
+            <section id="box-grid" class="box-grid">
+                <!-- Boxes will be generated here -->
+            </section>
+        </main>
+
+        <section id="history-section" class="history-section collapsed">
+            <button id="history-toggle" class="history-toggle">
+                <span>Recent History</span>
+                <i data-lucide="chevron-up"></i>
+            </button>
+            <div id="history-list" class="history-list">
+                <!-- History items will be generated here -->
+            </div>
+        </section>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Settings</h2>
+                    <button id="close-settings" class="icon-btn"><i data-lucide="x"></i></button>
+                </div>
+                <div class="settings-form">
+                    <div class="form-group">
+                        <label for="daily-goal">Daily Calorie Goal</label>
+                        <div class="number-input-container">
+                            <button id="goal-minus" class="num-btn" aria-label="Decrease"><i data-lucide="minus"></i></button>
+                            <input type="number" id="daily-goal" step="50" min="500" max="10000" value="2000">
+                            <button id="goal-plus" class="num-btn" aria-label="Increase"><i data-lucide="plus"></i></button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="cal-increment">Calories per Box</label>
+                        <select id="cal-increment">
+                            <option value="25">25 calories</option>
+                            <option value="50" selected>50 calories</option>
+                            <option value="100">100 calories</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button id="reset-day-btn" class="btn btn-secondary">Reset Today's Progress</button>
+                        <button id="save-settings" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
