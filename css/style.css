@@ -89,6 +89,38 @@ h1 {
     align-items: center;
 }
 
+.sync-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.sync-btn:hover {
+    color: var(--text-main);
+    background: var(--surface-light);
+}
+
+.sync-btn.active {
+    color: #4ade80; /* Success green */
+}
+
+.sync-btn.loading {
+    animation: sync-pulse 1.5s infinite;
+}
+
+@keyframes sync-pulse {
+    0% { opacity: 0.5; }
+    50% { opacity: 1; }
+    100% { opacity: 0.5; }
+}
+
 /* ── Summary Card ───────────────────────────────── */
 .summary-card {
     background: var(--glass-bg);
@@ -409,10 +441,40 @@ h1 {
 .icon-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; }
 .icon-btn:hover { color: var(--text-main); }
 
+.confirm-body p {
+    color: var(--text-muted);
+    line-height: 1.6;
+    font-size: 1rem;
+    white-space: pre-line;
+}
+
 .settings-form { display: flex; flex-direction: column; gap: 20px; }
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
 .form-group label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+
+.settings-user-info {
+    background: hsla(0, 0%, 100%, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-top: 4px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.settings-user-info span {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.settings-user-info i {
+    color: #4ade80;
+    flex-shrink: 0;
+}
 
 .form-group select {
     background: var(--bg-dark);
@@ -484,7 +546,82 @@ input[type="number"] { -moz-appearance: textfield; }
 .btn-secondary { background: var(--surface-light); color: var(--text-muted); }
 .btn-secondary:hover { color: var(--text-main); }
 
+/* ── Auth Modal ────────────────────────────────── */
+.auth-options { display: flex; flex-direction: column; gap: 20px; }
+.auth-error {
+    background: hsla(0, 85%, 60%, 0.15);
+    color: #ff6b6b;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    border: 1px solid hsla(0, 85%, 60%, 0.3);
+    text-align: center;
+}
+.google-btn { background: #4285F4; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.auth-divider { 
+    display: flex; align-items: center; text-align: center; 
+    color: var(--text-muted); font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+}
+.auth-divider::before, .auth-divider::after {
+    content: ''; flex: 1; border-bottom: 1px solid var(--glass-border);
+}
+.auth-divider span { padding: 0 10px; }
+.auth-actions { gap: 10px; }
+.auth-options input {
+    background: var(--bg-dark);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+    padding: 14px;
+    border-radius: var(--radius-sm);
+    width: 100%;
+    font-family: inherit;
+}
+
+/* ── Conflict Modal ────────────────────────────── */
+.conflict-comparison {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+.conflict-option {
+    flex: 1;
+    background: var(--bg-dark);
+    padding: 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--glass-border);
+    text-align: center;
+}
+.conflict-option h3 {
+    font-size: 0.85rem;
+    color: var(--text-main);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.conflict-option p {
+    font-size: 0.75rem !important;
+    color: var(--text-muted);
+}
+
 /* ── Responsive ─────────────────────────────────── */
+/* ── Footer ─────────────────────────────────────── */
+footer {
+    margin-top: auto;
+    padding-top: 20px;
+    text-align: center;
+}
+
+.footer-user-info {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    opacity: 0.6;
+    transition: var(--transition);
+}
+
+.footer-user-info:hover {
+    opacity: 1;
+}
+
 @media (max-width: 480px) {
     .app-container {
         padding: 16px 16px 30px;

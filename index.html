@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -19,6 +19,9 @@
             <div class="header-content">
                 <h1>Box-Cal</h1>
                 <div class="header-actions">
+                    <button id="sync-btn" class="sync-btn" aria-label="Sync to Cloud">
+                        <i data-lucide="cloud-off"></i>
+                    </button>
                     <button id="history-btn" aria-label="Recent History">
                         <i data-lucide="clock"></i>
                     </button>
@@ -108,6 +111,9 @@
                             <option value="100">100 calories</option>
                         </select>
                     </div>
+                    <div id="settings-user-info" class="settings-user-info">
+                        <!-- Populated by JS -->
+                    </div>
                     <div class="form-actions">
                         <button id="reset-day-btn" class="btn btn-secondary">Reset Today</button>
                         <button id="save-settings" class="btn btn-primary">Save Changes</button>
@@ -115,9 +121,90 @@
                 </div>
             </div>
         </div>
+
+        <!-- Auth Modal -->
+        <div id="auth-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Cloud Sync</h2>
+                    <button id="close-auth" class="icon-btn"><i data-lucide="x"></i></button>
+                </div>
+                <div class="auth-options">
+                    <div id="auth-error" class="auth-error" style="display:none;"></div>
+                    <button id="login-google" class="btn btn-primary google-btn">
+                         Sign in with Google
+                    </button>
+                    <div class="auth-divider"><span>or use email</span></div>
+                    <div class="settings-form">
+                        <div class="form-group">
+                            <input type="email" id="auth-email" placeholder="Email Address">
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="auth-password" placeholder="Password">
+                        </div>
+                        <div class="form-actions auth-actions">
+                            <button id="login-email" class="btn btn-secondary">Login</button>
+                            <button id="signup-email" class="btn btn-secondary">Sign Up</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confirm Modal -->
+        <div id="confirm-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="confirm-title">Confirm Action</h2>
+                    <button id="close-confirm" class="icon-btn"><i data-lucide="x"></i></button>
+                </div>
+                <div class="confirm-body">
+                    <p id="confirm-message">Are you sure you want to proceed?</p>
+                </div>
+                <div class="form-actions confirm-actions" style="margin-top: 24px;">
+                    <button id="confirm-cancel" class="btn btn-secondary">Cancel</button>
+                    <button id="confirm-ok" class="btn btn-primary">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Conflict Modal -->
+        <div id="conflict-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Data Conflict</h2>
+                </div>
+                <div class="confirm-body">
+                    <p>We found existing data on the server. Which data would you like to use?</p>
+                    <div class="conflict-comparison">
+                        <div class="conflict-option">
+                            <h3>Local Data</h3>
+                            <p>The data currently on this device.</p>
+                        </div>
+                        <div class="conflict-option">
+                            <h3>Server Data</h3>
+                            <p>The data saved in your cloud account.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions conflict-actions" style="margin-top: 24px; flex-direction: column; gap: 12px;">
+                    <button id="use-server-btn" class="btn btn-primary" style="width: 100%;">Use Server Data</button>
+                    <button id="use-local-btn" class="btn btn-secondary" style="width: 100%;">Keep Local Data</button>
+                    <button id="conflict-logout" class="btn btn-secondary" style="width: 100%; border: 1px solid var(--glass-border); background: transparent; color: var(--text-muted);">Cancel & Logout</button>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <div id="footer-user-info" class="footer-user-info"></div>
+        </footer>
     </div>
 
-    <script src="js/app.js"></script>
-    <script>lucide.createIcons();</script>
+    <script type="module" src="js/app.js"></script>
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        });
+    </script>
 </body>
 </html>
