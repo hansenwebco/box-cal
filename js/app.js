@@ -167,16 +167,20 @@ const BoxCal = {
         const grid = document.getElementById('box-grid');
         const filled = this.state.currentDay.filledBoxes;
 
-        const goalBoxes = Math.ceil(this.state.settings.dailyGoal / this.state.settings.increment);
-        const indices   = Object.keys(filled).map(Number);
-        const maxIdx    = indices.length > 0 ? Math.max(...indices) : -1;
+        const goalBoxes   = Math.ceil(this.state.settings.dailyGoal / this.state.settings.increment);
+        const indices     = Object.keys(filled).map(Number);
+        const maxIdx      = indices.length > 0 ? Math.max(...indices) : -1;
+        const filledCount = indices.length;
 
         // Base count is the goal boxes
         let count = goalBoxes;
 
-        // If the last box is reached or exceeded, expand in chunks of 8
-        if (maxIdx >= count - 1) {
-            const currentMaxRow = Math.ceil((maxIdx + 1) / 8) * 8;
+        // Expansion logic:
+        // 1. Show extra boxes if all default boxes are filled
+        // 2. OR keep showing them if there's at least one box filled in the expansion area
+        if (filledCount >= goalBoxes || maxIdx >= goalBoxes) {
+            const highestIdx = Math.max(maxIdx, goalBoxes - 1);
+            const currentMaxRow = Math.ceil((highestIdx + 1) / 8) * 8;
             count = currentMaxRow + 8;
         }
 
@@ -186,13 +190,15 @@ const BoxCal = {
             const box = document.createElement('div');
             box.className = 'box';
 
-            if (i >= goalBoxes) {
-                box.classList.add('beyond-goal');
-            }
-
             const meal = filled[i];
             if (meal) {
                 box.classList.add('filled', `meal-${meal}`);
+                if (i >= goalBoxes) {
+                    box.classList.add('beyond-goal');
+                    box.innerHTML = `<span class="box-label">+${this.state.settings.increment}</span>`;
+                }
+            } else if (i >= goalBoxes) {
+                box.classList.add('beyond-goal');
             }
 
             box.addEventListener('click', () => this.toggleBox(i));
