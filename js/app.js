@@ -39,6 +39,7 @@ const BoxCal = {
     unsubscribeDay: null,
     unsubscribeSettings: null,
     fp: null,
+    historyDates: new Set(),
 
     // ── Init ───────────────────────────────────────────
     init() {
@@ -102,6 +103,7 @@ const BoxCal = {
         if (savedHistory) {
             try {
                 this.state.history = JSON.parse(savedHistory);
+                this.updateHistoryDates();
             } catch (e) { console.error("Error loading history", e); }
         }
 
@@ -151,6 +153,15 @@ const BoxCal = {
         
         // Save history (cache)
         localStorage.setItem('box-cal-history', JSON.stringify(this.state.history));
+        
+        // Update history dates for calendar dots
+        const count = Object.keys(this.state.currentDay.filledBoxes).length;
+        if (count > 0) {
+            this.historyDates.add(this.viewingDate);
+        } else {
+            this.historyDates.delete(this.viewingDate);
+        }
+        if (this.fp) this.fp.redraw();
         
         // Legacy support / overall metadata
         localStorage.setItem('box-cal-last-updated', this.state.lastUpdated);
@@ -263,6 +274,7 @@ const BoxCal = {
 
             this.isLoggingIn = false;
             this.setupSyncListeners(userRef, dayRef);
+            this.fetchHistory(); // Background load history for calendar dots
         } catch (e) {
             console.error("Cloud sync failed:", e);
         }
@@ -759,7 +771,7 @@ const BoxCal = {
 
         try {
             const daysRef = collection(db, "users", this.user.uid, "days");
-            const q = query(daysRef, orderBy("date", "desc"), limit(100));
+            const q = query(daysRef, orderBy("date", "desc"), limit(500));
             const querySnapshot = await getDocs(q);
             
             const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
@@ -800,6 +812,7 @@ const BoxCal = {
 
             // Always update state, even if history is empty (e.g. after a wipe)
             this.state.history = history;
+            this.updateHistoryDates();
             this.saveLocalState(true);
             
             this.renderStatsPanel();
@@ -807,6 +820,11 @@ const BoxCal = {
             console.error("Error fetching history:", e);
             this.renderStatsPanel(); // Render with local data even if fetch fails
         }
+    },
+
+    updateHistoryDates() {
+        this.historyDates = new Set(this.state.history.filter(h => h.calories > 0).map(h => h.date));
+        if (this.fp) this.fp.redraw();
     },
 
     statsChart: null,
@@ -1464,6 +1482,12 @@ const BoxCal = {
                     this.loadDay(this.viewingDate);
                     this.renderUI();
                     if (this.user) this.startCloudSync();
+                }
+            },
+            onDayCreate: (dObj, dStr, fp, dayElem) => {
+                const date = fp.formatDate(dayElem.dateObj, "Y-m-d");
+                if (this.historyDates && this.historyDates.has(date)) {
+                    dayElem.classList.add('has-stats');
                 }
             }
         });
