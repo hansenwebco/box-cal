@@ -69,12 +69,19 @@ const BoxCal = {
             this.updateSyncUI();
             
             if (user) {
+                console.log("Auth state changed: User logged in", user.email);
                 this.startCloudSync();
                 document.getElementById('auth-modal').classList.remove('active');
             } else {
-                if (this.unsubscribeSnapshot) {
-                    this.unsubscribeSnapshot();
-                    this.unsubscribeSnapshot = null;
+                console.log("Auth state changed: User logged out");
+                // Fix: Properly unsubscribe from day and settings listeners
+                if (this.unsubscribeDay) {
+                    this.unsubscribeDay();
+                    this.unsubscribeDay = null;
+                }
+                if (this.unsubscribeSettings) {
+                    this.unsubscribeSettings();
+                    this.unsubscribeSettings = null;
                 }
             }
         });
@@ -218,10 +225,16 @@ const BoxCal = {
                 const localDayRaw = localStorage.getItem(localKey);
                 const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
 
-                if (!localDay || cloudDay.lastUpdated > (localDay.lastUpdated || 0)) {
-                    this.state.currentDay = { ...cloudDay, date: syncDate };
-                    this.saveLocalState(true);
-                    this.renderUI();
+                if (!localDay || cloudDay.lastUpdated !== (localDay.lastUpdated || 0)) {
+                    console.log(`Initial cloud sync: applying remote data for ${syncDate}`);
+                    this.isSyncing = true;
+                    try {
+                        this.state.currentDay = { ...cloudDay, date: syncDate };
+                        this.saveLocalState(true);
+                        this.renderUI();
+                    } finally {
+                        this.isSyncing = false;
+                    }
                 } else if (localDay && localDay.lastUpdated > (cloudDay.lastUpdated || 0)) {
                     // Push local to cloud — ensure date field is correct
                     await setDoc(dayRef, { ...localDay, date: syncDate });
@@ -290,9 +303,14 @@ const BoxCal = {
         // Capture the date this listener was set up for so we can detect stale callbacks
         const listenerDate = this.viewingDate;
 
+        console.log(`Setting up sync listeners for date: ${listenerDate}`);
+
         // 1. Day Listener
         this.unsubscribeDay = onSnapshot(dayRef, (snap) => {
             if (this.isSyncing) return;
+
+            // Ignore if this is a local change that hasn't been confirmed by the server yet
+            if (snap.metadata.hasPendingWrites) return;
 
             // CRITICAL: If the user has navigated away from the date this listener
             // was created for, ignore the callback to prevent cross-date overwrites.
@@ -307,31 +325,46 @@ const BoxCal = {
                 const localDayRaw = localStorage.getItem(localKey);
                 const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
 
-                if (!localDay || cloudData.lastUpdated > (localDay.lastUpdated || 0)) {
+                // Robust comparison: Update if local is missing or timestamps are different.
+                // Using !== instead of > handles clock skew between different devices.
+                if (!localDay || cloudData.lastUpdated !== (localDay.lastUpdated || 0)) {
+                    console.log(`Remote day update received for ${listenerDate}`);
                     this.isSyncing = true;
-                    this.state.currentDay = { ...cloudData, date: listenerDate };
-                    this.saveLocalState(true);
-                    this.renderUI();
-                    this.isSyncing = false;
+                    try {
+                        this.state.currentDay = { ...cloudData, date: listenerDate };
+                        this.saveLocalState(true);
+                        this.renderUI();
+                    } catch (e) {
+                        console.error("Error applying remote day update:", e);
+                    } finally {
+                        this.isSyncing = false;
+                    }
                 }
             } else {
                 // Document deleted remotely (e.g. via wipe or erase)
-                // If we have local data, check if it's stale
                 const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
                 if ((this.state.currentDay.lastUpdated || 0) <= lastWipe) {
                     console.log(`Day ${listenerDate} is empty in cloud and local is stale — clearing.`);
                     this.isSyncing = true;
-                    this.state.currentDay = { date: listenerDate, filledBoxes: {}, activeMeal: 'breakfast' };
-                    localStorage.removeItem(`box-cal-day-${listenerDate}`);
-                    this.renderUI();
-                    this.renderHistory(); // Ensure history list also clears
-                    this.isSyncing = false;
+                    try {
+                        this.state.currentDay = { date: listenerDate, filledBoxes: {}, activeMeal: 'breakfast' };
+                        localStorage.removeItem(`box-cal-day-${listenerDate}`);
+                        this.renderUI();
+                        this.renderHistory(); 
+                    } finally {
+                        this.isSyncing = false;
+                    }
                 }
             }
+        }, (error) => {
+            console.error(`Day listener error for ${listenerDate}:`, error);
         });
 
         // 2. Settings Listener
         this.unsubscribeSettings = onSnapshot(userRef, (snap) => {
+            if (this.isSyncing) return;
+            if (snap.metadata.hasPendingWrites) return;
+
             if (!snap.exists()) return;
             const cloudData = snap.data();
 
@@ -339,14 +372,22 @@ const BoxCal = {
             if (cloudData.wipedAt && this.handleRemoteWipe(cloudData.wipedAt)) return;
             // ──────────────────────────────────────────────────────────────
 
-            if (!this.isSyncing && cloudData.settings && cloudData.lastUpdated > (this.state.lastUpdated || 0)) {
+            if (cloudData.settings && cloudData.lastUpdated !== (this.state.lastUpdated || 0)) {
+                console.log("Remote settings update received");
                 this.isSyncing = true;
-                this.state.settings = { ...this.state.settings, ...cloudData.settings };
-                this.state.lastUpdated = cloudData.lastUpdated;
-                this.saveLocalState(true);
-                this.renderUI();
-                this.isSyncing = false;
+                try {
+                    this.state.settings = { ...this.state.settings, ...cloudData.settings };
+                    this.state.lastUpdated = cloudData.lastUpdated;
+                    this.saveLocalState(true);
+                    this.renderUI();
+                } catch (e) {
+                    console.error("Error applying remote settings update:", e);
+                } finally {
+                    this.isSyncing = false;
+                }
             }
+        }, (error) => {
+            console.error("Settings listener error:", error);
         });
     },
 
