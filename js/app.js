@@ -868,6 +868,8 @@ const NomBlox = {
             this.renderStatsPanel();
             return;
         }
+
+        try {
             const daysRef = collection(db, "users", this.user.uid, "days");
             const q = query(daysRef, orderBy("date", "desc"), limit(500));
             const querySnapshot = await getDocs(q);
