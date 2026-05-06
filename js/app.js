@@ -681,13 +681,12 @@ const BoxCal = {
     },
 
     renderStatsPanel() {
-        const history = this.state.history;
         const filtered = this.getFilteredHistory();
         
-        this.renderStatsOverview(history);
+        this.renderStatsOverview(filtered);
         this.renderStatsChart(filtered);
         this.renderMealBreakdown(filtered);
-        this.renderStatsRecords(history);
+        this.renderStatsRecords(filtered);
         this.renderHistory();
         this.setupRangeToggle();
         
@@ -951,8 +950,10 @@ const BoxCal = {
                 const range = newBtn.dataset.range;
                 this.statsRange = range === 'all' ? 'all' : parseInt(range);
                 const filtered = this.getFilteredHistory();
+                this.renderStatsOverview(filtered);
                 this.renderStatsChart(filtered);
                 this.renderMealBreakdown(filtered);
+                this.renderStatsRecords(filtered);
             });
         });
     },

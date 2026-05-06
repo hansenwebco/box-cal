@@ -100,6 +100,16 @@
                     <button id="close-history" class="icon-btn"><i data-lucide="x"></i></button>
                 </div>
 
+                <!-- Global Range Toggle -->
+                <div class="stats-range-bar">
+                    <div class="stats-range-toggle">
+                        <button class="range-btn active" data-range="7">7D</button>
+                        <button class="range-btn" data-range="14">14D</button>
+                        <button class="range-btn" data-range="30">30D</button>
+                        <button class="range-btn" data-range="all">All</button>
+                    </div>
+                </div>
+
                 <!-- Stats Overview Cards -->
                 <div class="stats-overview">
                     <div class="stats-card">
@@ -134,15 +144,7 @@
 
                 <!-- Chart Section -->
                 <div class="stats-chart-section">
-                    <div class="stats-chart-header">
-                        <span class="stats-section-title">Calorie Trend</span>
-                        <div class="stats-range-toggle">
-                            <button class="range-btn active" data-range="7">7D</button>
-                            <button class="range-btn" data-range="14">14D</button>
-                            <button class="range-btn" data-range="30">30D</button>
-                            <button class="range-btn" data-range="all">All</button>
-                        </div>
-                    </div>
+                    <span class="stats-section-title">Calorie Trend</span>
                     <div class="stats-chart-wrapper">
                         <canvas id="stats-chart"></canvas>
                     </div>
