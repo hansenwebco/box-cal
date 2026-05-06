@@ -132,12 +132,18 @@ const BoxCal = {
         // Save settings
         localStorage.setItem('box-cal-settings', JSON.stringify(this.state.settings));
         
+        // Update timestamp before saving
+        this.state.lastUpdated = Date.now();
+
         // CRITICAL: viewingDate is the single source of truth for which day slot we write to.
         // Always force currentDay.date to match before saving, preventing ghost documents.
         const saveDate = this.viewingDate;
         this.state.currentDay.date = saveDate;
+        this.state.currentDay.lastUpdated = this.state.lastUpdated; // Embed in day object
+        
         const dayKey = `box-cal-day-${saveDate}`;
         localStorage.setItem(dayKey, JSON.stringify(this.state.currentDay));
+        localStorage.setItem('box-cal-last-updated', this.state.lastUpdated);
         
         // Save history (cache)
         localStorage.setItem('box-cal-history', JSON.stringify(this.state.history));
@@ -318,6 +324,7 @@ const BoxCal = {
                     this.state.currentDay = { date: listenerDate, filledBoxes: {}, activeMeal: 'breakfast' };
                     localStorage.removeItem(`box-cal-day-${listenerDate}`);
                     this.renderUI();
+                    this.renderHistory(); // Ensure history list also clears
                     this.isSyncing = false;
                 }
             }
@@ -618,12 +625,14 @@ const BoxCal = {
             const q = query(daysRef, orderBy("date", "desc"), limit(100));
             const querySnapshot = await getDocs(q);
             
-            // Use a Map keyed by date to deduplicate entries.
-            // If Firestore has duplicate documents for the same date, 
-            // the one with the latest lastUpdated wins.
+            const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
             const historyMap = new Map();
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
+                
+                // If this data was updated before the last wipe, ignore it (likely cached stale data)
+                if (lastWipe > 0 && (data.lastUpdated || 0) <= lastWipe) return;
+
                 const date = data.date || doc.id; // Use document ID as fallback
                 const filledBoxes = data.filledBoxes || {};
                 const inc = this.state.settings.increment || 50;
@@ -652,10 +661,9 @@ const BoxCal = {
                 .map(({ _lastUpdated, ...rest }) => rest) // Strip internal field
                 .sort((a, b) => b.date.localeCompare(a.date));
 
-            if (history.length > 0) {
-                this.state.history = history;
-                this.saveLocalState(true);
-            }
+            // Always update state, even if history is empty (e.g. after a wipe)
+            this.state.history = history;
+            this.saveLocalState(true);
             
             this.renderStatsPanel();
         } catch (e) {
@@ -747,6 +755,8 @@ const BoxCal = {
         
         if (filtered.length === 0) {
             this.statsChart = null;
+            // Clear the canvas if no data
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             return;
         }
 
