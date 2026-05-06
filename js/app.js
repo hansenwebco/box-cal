@@ -1,5 +1,5 @@
 /**
- * Box-Cal — App Logic
+ * NomBlox — App Logic
  * Meal-based calorie tracking with color-coded boxes.
  */
 
@@ -12,7 +12,7 @@ import {
 const STATE_VERSION = 3; // bump when schema changes
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'];
 
-const BoxCal = {
+const NomBlox = {
 
     // ── State ──────────────────────────────────────────
     state: {
@@ -43,6 +43,7 @@ const BoxCal = {
 
     // ── Init ───────────────────────────────────────────
     init() {
+        this.migrateLegacyData();
         this.currentDate = this.getTodayDate();
         this.viewingDate = this.currentDate;
         
@@ -62,6 +63,18 @@ const BoxCal = {
         document.querySelectorAll('.modal').forEach(modal => {
             observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
         });
+    },
+
+    migrateLegacyData() {
+        if (localStorage.getItem('box-cal-settings') && !localStorage.getItem('nomblox-settings')) {
+            console.log("Migrating legacy Box-Cal data to NomBlox...");
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('box-cal-')) {
+                    const newKey = key.replace('box-cal-', 'nomblox-');
+                    localStorage.setItem(newKey, localStorage.getItem(key));
+                }
+            });
+        }
     },
 
     setupAuthListener() {
@@ -91,7 +104,7 @@ const BoxCal = {
     // ── Persistence ────────────────────────────────────
     loadLocalState() {
         // 1. Load Settings
-        const savedSettings = localStorage.getItem('box-cal-settings');
+        const savedSettings = localStorage.getItem('nomblox-settings');
         if (savedSettings) {
             try {
                 this.state.settings = JSON.parse(savedSettings);
@@ -99,7 +112,7 @@ const BoxCal = {
         }
 
         // 2. Load History
-        const savedHistory = localStorage.getItem('box-cal-history');
+        const savedHistory = localStorage.getItem('nomblox-history');
         if (savedHistory) {
             try {
                 this.state.history = JSON.parse(savedHistory);
@@ -112,7 +125,7 @@ const BoxCal = {
     },
 
     loadDay(date) {
-        const key = `box-cal-day-${date}`;
+        const key = `nomblox-day-${date}`;
         const savedDay = localStorage.getItem(key);
         
         if (savedDay) {
@@ -139,7 +152,7 @@ const BoxCal = {
         }
         
         // Save settings
-        localStorage.setItem('box-cal-settings', JSON.stringify(this.state.settings));
+        localStorage.setItem('nomblox-settings', JSON.stringify(this.state.settings));
         
         // CRITICAL: viewingDate is the single source of truth for which day slot we write to.
         // Always force currentDay.date to match before saving, preventing ghost documents.
@@ -147,12 +160,12 @@ const BoxCal = {
         this.state.currentDay.date = saveDate;
         this.state.currentDay.lastUpdated = this.state.lastUpdated; // Embed in day object
         
-        const dayKey = `box-cal-day-${saveDate}`;
+        const dayKey = `nomblox-day-${saveDate}`;
         localStorage.setItem(dayKey, JSON.stringify(this.state.currentDay));
-        localStorage.setItem('box-cal-last-updated', this.state.lastUpdated);
+        localStorage.setItem('nomblox-last-updated', this.state.lastUpdated);
         
         // Save history (cache)
-        localStorage.setItem('box-cal-history', JSON.stringify(this.state.history));
+        localStorage.setItem('nomblox-history', JSON.stringify(this.state.history));
         
         // Update history dates for calendar dots
         const count = Object.keys(this.state.currentDay.filledBoxes).length;
@@ -164,7 +177,7 @@ const BoxCal = {
         if (this.fp) this.fp.redraw();
         
         // Legacy support / overall metadata
-        localStorage.setItem('box-cal-last-updated', this.state.lastUpdated);
+        localStorage.setItem('nomblox-last-updated', this.state.lastUpdated);
     },
 
     async saveState() {
@@ -229,7 +242,7 @@ const BoxCal = {
 
             if (daySnap.exists()) {
                 const cloudDay = daySnap.data();
-                const localKey = `box-cal-day-${syncDate}`;
+                const localKey = `nomblox-day-${syncDate}`;
                 const localDayRaw = localStorage.getItem(localKey);
                 const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
 
@@ -250,12 +263,12 @@ const BoxCal = {
             } else {
                 // Cloud doesn't have this day yet. 
                 // Only push local if it's not stale relative to the last known wipe.
-                const localKey = `box-cal-day-${syncDate}`;
+                const localKey = `nomblox-day-${syncDate}`;
                 const localDayRaw = localStorage.getItem(localKey);
                 if (localDayRaw) {
                     try {
                         const localDay = JSON.parse(localDayRaw);
-                        const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
+                        const lastWipe = parseInt(localStorage.getItem('nomblox-wiped-at') || '0', 10);
                         
                         if ((localDay.lastUpdated || 0) > lastWipe) {
                             await setDoc(dayRef, { ...localDay, date: syncDate });
@@ -281,16 +294,16 @@ const BoxCal = {
     },
 
     handleRemoteWipe(cloudWipedAt) {
-        const lastSeenWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
+        const lastSeenWipe = parseInt(localStorage.getItem('nomblox-wiped-at') || '0', 10);
         if (cloudWipedAt > lastSeenWipe) {
             console.log('Remote wipe detected — resetting local state.');
             
             // Prevent any outgoing saves while we are wiping
             this.isSyncing = true;
 
-            localStorage.setItem('box-cal-wiped-at', cloudWipedAt);
+            localStorage.setItem('nomblox-wiped-at', cloudWipedAt);
             Object.keys(localStorage).forEach(key => {
-                if (key.startsWith('box-cal-') && key !== 'box-cal-wiped-at') {
+                if (key.startsWith('nomblox-') && key !== 'nomblox-wiped-at') {
                     localStorage.removeItem(key);
                 }
             });
@@ -332,7 +345,7 @@ const BoxCal = {
 
             if (snap.exists()) {
                 const cloudData = snap.data();
-                const localKey = `box-cal-day-${listenerDate}`;
+                const localKey = `nomblox-day-${listenerDate}`;
                 const localDayRaw = localStorage.getItem(localKey);
                 const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
 
@@ -357,7 +370,7 @@ const BoxCal = {
                 this.isSyncing = true;
                     try {
                         this.state.currentDay = { date: listenerDate, filledBoxes: {}, activeMeal: 'breakfast' };
-                        localStorage.removeItem(`box-cal-day-${listenerDate}`);
+                        localStorage.removeItem(`nomblox-day-${listenerDate}`);
                         this.renderUI();
                         this.renderHistory(); 
                     } finally {
@@ -609,7 +622,7 @@ const BoxCal = {
         // Collect all box-cal items from localStorage
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key.startsWith('box-cal-')) {
+            if (key.startsWith('nomblox-')) {
                 backup.data[key] = localStorage.getItem(key);
             }
         }
@@ -620,7 +633,7 @@ const BoxCal = {
         const date = new Date().toISOString().split('T')[0];
         
         a.href = url;
-        a.download = `box-cal-backup-${date}.json`;
+        a.download = `nomblox-backup-${date}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -654,7 +667,7 @@ const BoxCal = {
                         const keysToRemove = [];
                         for (let i = 0; i < localStorage.length; i++) {
                             const key = localStorage.key(i);
-                            if (key.startsWith('box-cal-')) {
+                            if (key.startsWith('nomblox-')) {
                                 keysToRemove.push(key);
                             }
                         }
@@ -665,10 +678,10 @@ const BoxCal = {
                         for (let [key, value] of Object.entries(backup.data)) {
                             // Skip the old wiped-at and last-updated keys from the backup, 
                             // we will set them to the current time.
-                            if (key === 'box-cal-wiped-at' || key === 'box-cal-last-updated') continue;
+                            if (key === 'nomblox-wiped-at' || key === 'nomblox-last-updated') continue;
 
                             // Update timestamps for each day record
-                            if (key.startsWith('box-cal-day-')) {
+                            if (key.startsWith('nomblox-day-')) {
                                 try {
                                     const dayObj = JSON.parse(value);
                                     dayObj.lastUpdated = newSyncTime;
@@ -683,8 +696,8 @@ const BoxCal = {
                         // Force global timestamps to current time
                         // We set wiped-at slightly BEFORE the current time to ensure 
                         // day.lastUpdated (newSyncTime) is strictly greater than wiped-at.
-                        localStorage.setItem('box-cal-last-updated', newSyncTime);
-                        localStorage.setItem('box-cal-wiped-at', newSyncTime - 1000);
+                        localStorage.setItem('nomblox-last-updated', newSyncTime);
+                        localStorage.setItem('nomblox-wiped-at', newSyncTime - 1000);
 
                         location.reload();
                     }
@@ -712,7 +725,7 @@ const BoxCal = {
                     try {
                         // CRITICAL: Set local wipe timestamp FIRST so our own listener doesn't 
                         // trigger a reload when we update the user document.
-                        localStorage.setItem('box-cal-wiped-at', wipedAt);
+                        localStorage.setItem('nomblox-wiped-at', wipedAt);
 
                         // Signal all other devices to wipe immediately
                         await setDoc(doc(db, "users", this.user.uid), { 
@@ -737,13 +750,13 @@ const BoxCal = {
 
                 // 2. Clear Local Storage
                 Object.keys(localStorage).forEach(key => {
-                    if (key.startsWith('box-cal-') && key !== 'box-cal-wiped-at') {
+                    if (key.startsWith('nomblox-') && key !== 'nomblox-wiped-at') {
                         localStorage.removeItem(key);
                     }
                 });
                 
                 // Ensure wipedAt is definitely set (it was set above, but just in case of non-user mode)
-                localStorage.setItem('box-cal-wiped-at', wipedAt);
+                localStorage.setItem('nomblox-wiped-at', wipedAt);
 
                 // 3. Reload (Stay logged in)
                 location.reload();
@@ -774,7 +787,7 @@ const BoxCal = {
             const q = query(daysRef, orderBy("date", "desc"), limit(500));
             const querySnapshot = await getDocs(q);
             
-            const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
+            const lastWipe = parseInt(localStorage.getItem('nomblox-wiped-at') || '0', 10);
             const historyMap = new Map();
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
@@ -1683,4 +1696,4 @@ const BoxCal = {
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => BoxCal.init());
+document.addEventListener('DOMContentLoaded', () => NomBlox.init());

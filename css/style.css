@@ -85,14 +85,20 @@ header {
     gap: 2px;
 }
 
-h1 {
-    font-size: 2rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    letter-spacing: -0.5px;
-    line-height: 1.1;
+.logo-text {
+    font-size: 2.1rem;
+    font-weight: 600;
+    letter-spacing: -1.2px;
+    line-height: 1;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.logo-text span {
+    font-weight: 900;
+    color: var(--accent);
+    /* Subtle glow instead of gradient shading */
+    text-shadow: 0 0 20px hsla(200, 85%, 55%, 0.4);
 }
 
 .date-display {
