@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     
     <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" type="text/css" href="https://npmcdn.com/flatpickr/dist/themes/dark.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -36,8 +37,8 @@
                     <button id="sync-btn" class="sync-btn" aria-label="Sync to Cloud">
                         <i data-lucide="cloud-off"></i>
                     </button>
-                    <button id="history-btn" aria-label="Recent History">
-                        <i data-lucide="clock"></i>
+                    <button id="history-btn" aria-label="Stats & History">
+                        <i data-lucide="bar-chart-3"></i>
                     </button>
                     <button id="settings-btn" aria-label="Settings">
                         <i data-lucide="settings"></i>
@@ -91,14 +92,89 @@
             <section id="box-grid" class="box-grid"></section>
         </main>
 
-        <!-- History Modal -->
+        <!-- Stats Modal -->
         <div id="history-modal" class="modal">
-            <div class="modal-content">
+            <div class="modal-content stats-modal-content">
                 <div class="modal-header">
-                    <h2>Recent History</h2>
+                    <h2>Stats & History</h2>
                     <button id="close-history" class="icon-btn"><i data-lucide="x"></i></button>
                 </div>
-                <div id="history-list" class="history-list modal-history-list"></div>
+
+                <!-- Stats Overview Cards -->
+                <div class="stats-overview">
+                    <div class="stats-card">
+                        <div class="stats-card-icon"><i data-lucide="flame"></i></div>
+                        <div class="stats-card-body">
+                            <span class="stats-card-value" id="stat-total-cals">0</span>
+                            <span class="stats-card-label">Total Calories</span>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-card-icon"><i data-lucide="calendar-days"></i></div>
+                        <div class="stats-card-body">
+                            <span class="stats-card-value" id="stat-days-tracked">0</span>
+                            <span class="stats-card-label">Days Tracked</span>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-card-icon"><i data-lucide="target"></i></div>
+                        <div class="stats-card-body">
+                            <span class="stats-card-value" id="stat-avg-daily">0</span>
+                            <span class="stats-card-label">Daily Average</span>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-card-icon"><i data-lucide="zap"></i></div>
+                        <div class="stats-card-body">
+                            <span class="stats-card-value" id="stat-streak">0</span>
+                            <span class="stats-card-label">Current Streak</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart Section -->
+                <div class="stats-chart-section">
+                    <div class="stats-chart-header">
+                        <span class="stats-section-title">Calorie Trend</span>
+                        <div class="stats-range-toggle">
+                            <button class="range-btn active" data-range="7">7D</button>
+                            <button class="range-btn" data-range="14">14D</button>
+                            <button class="range-btn" data-range="30">30D</button>
+                            <button class="range-btn" data-range="all">All</button>
+                        </div>
+                    </div>
+                    <div class="stats-chart-wrapper">
+                        <canvas id="stats-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Meal Breakdown -->
+                <div class="stats-meal-breakdown">
+                    <span class="stats-section-title">Average Meal Split</span>
+                    <div class="meal-breakdown-bars" id="meal-breakdown-bars"></div>
+                </div>
+
+                <!-- Records -->
+                <div class="stats-records">
+                    <div class="stats-record-item">
+                        <span class="stats-record-label"><i data-lucide="trophy"></i> Best Day</span>
+                        <span class="stats-record-value" id="stat-best-day">—</span>
+                    </div>
+                    <div class="stats-record-item">
+                        <span class="stats-record-label"><i data-lucide="arrow-down"></i> Lowest Day</span>
+                        <span class="stats-record-value" id="stat-worst-day">—</span>
+                    </div>
+                    <div class="stats-record-item">
+                        <span class="stats-record-label"><i data-lucide="check-circle"></i> Under Goal</span>
+                        <span class="stats-record-value" id="stat-under-goal">—</span>
+                    </div>
+                </div>
+
+                <!-- Daily Log -->
+                <div class="stats-daily-log">
+                    <span class="stats-section-title">Daily Log</span>
+                    <div id="history-list" class="history-list modal-history-list"></div>
+                </div>
             </div>
         </div>
 

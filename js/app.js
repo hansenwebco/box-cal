@@ -49,6 +49,18 @@ const BoxCal = {
         this.renderUI();
         this.setupEventListeners();
         this.setupAuthListener();
+        this.setupModalScrollLock();
+    },
+
+    /** Lock body scroll whenever any .modal has .active */
+    setupModalScrollLock() {
+        const observer = new MutationObserver(() => {
+            const anyOpen = document.querySelector('.modal.active');
+            document.body.classList.toggle('modal-open', !!anyOpen);
+        });
+        document.querySelectorAll('.modal').forEach(modal => {
+            observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+        });
     },
 
     setupAuthListener() {
@@ -120,9 +132,10 @@ const BoxCal = {
         // Save settings
         localStorage.setItem('box-cal-settings', JSON.stringify(this.state.settings));
         
-        // Save current viewing day
-        // Use this.viewingDate as the source of truth for the key
-        const saveDate = this.state.currentDay.date || this.viewingDate;
+        // CRITICAL: viewingDate is the single source of truth for which day slot we write to.
+        // Always force currentDay.date to match before saving, preventing ghost documents.
+        const saveDate = this.viewingDate;
+        this.state.currentDay.date = saveDate;
         const dayKey = `box-cal-day-${saveDate}`;
         localStorage.setItem(dayKey, JSON.stringify(this.state.currentDay));
         
@@ -137,6 +150,13 @@ const BoxCal = {
         this.saveLocalState();
         
         if (this.user && !this.isSyncing) {
+            // Snapshot viewingDate at the time of call so async doesn't race with date navigation
+            const saveDate = this.viewingDate;
+            if (!saveDate) {
+                console.warn('saveState: no date available, skipping cloud save');
+                return;
+            }
+
             try {
                 // Save settings to user doc
                 await setDoc(doc(db, "users", this.user.uid), { 
@@ -144,18 +164,11 @@ const BoxCal = {
                     lastUpdated: this.state.lastUpdated 
                 }, { merge: true });
 
-                // Always use viewingDate as the canonical day key to prevent ghost documents
-                const saveDate = this.viewingDate || this.state.currentDay.date;
-                if (!saveDate) {
-                    console.warn('saveState: no date available, skipping cloud save');
-                    return;
-                }
-                this.state.currentDay.date = saveDate; // Keep in sync
-
-                // Save day to sub-collection
+                // Save day to sub-collection using the snapshotted date
                 const dayRef = doc(db, "users", this.user.uid, "days", saveDate);
                 await setDoc(dayRef, {
                     ...this.state.currentDay,
+                    date: saveDate,
                     lastUpdated: this.state.lastUpdated
                 });
             } catch (e) {
@@ -183,25 +196,34 @@ const BoxCal = {
             }
 
             // 2. Sync Current Day
+            // Snapshot the date we're syncing for — if user navigates during async, bail out
+            const syncDate = this.viewingDate;
             const daySnap = await getDoc(dayRef);
+
+            // Bail if user navigated away during the async fetch
+            if (this.viewingDate !== syncDate) {
+                console.log(`User navigated from ${syncDate} to ${this.viewingDate} during sync — aborting stale sync.`);
+                return;
+            }
+
             if (daySnap.exists()) {
                 const cloudDay = daySnap.data();
-                const localKey = `box-cal-day-${this.viewingDate}`;
+                const localKey = `box-cal-day-${syncDate}`;
                 const localDayRaw = localStorage.getItem(localKey);
                 const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
 
                 if (!localDay || cloudDay.lastUpdated > (localDay.lastUpdated || 0)) {
-                    this.state.currentDay = cloudDay;
+                    this.state.currentDay = { ...cloudDay, date: syncDate };
                     this.saveLocalState(true);
                     this.renderUI();
                 } else if (localDay && localDay.lastUpdated > (cloudDay.lastUpdated || 0)) {
-                    // Push local to cloud
-                    await setDoc(dayRef, localDay);
+                    // Push local to cloud — ensure date field is correct
+                    await setDoc(dayRef, { ...localDay, date: syncDate });
                 }
             } else {
                 // Cloud doesn't have this day yet. 
                 // Only push local if it's not stale relative to the last known wipe.
-                const localKey = `box-cal-day-${this.viewingDate}`;
+                const localKey = `box-cal-day-${syncDate}`;
                 const localDayRaw = localStorage.getItem(localKey);
                 if (localDayRaw) {
                     try {
@@ -209,12 +231,12 @@ const BoxCal = {
                         const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
                         
                         if ((localDay.lastUpdated || 0) > lastWipe) {
-                            await setDoc(dayRef, localDay);
+                            await setDoc(dayRef, { ...localDay, date: syncDate });
                         } else {
                             // This is ghost data from before a wipe — discard it
-                            console.log(`Discarding stale local data for ${this.viewingDate}`);
+                            console.log(`Discarding stale local data for ${syncDate}`);
                             localStorage.removeItem(localKey);
-                            this.loadDay(this.viewingDate); // Reset in-memory state
+                            this.loadDay(syncDate); // Reset in-memory state
                             this.renderUI();
                         }
                     } catch (e) {
@@ -259,20 +281,29 @@ const BoxCal = {
         if (this.unsubscribeDay) this.unsubscribeDay();
         if (this.unsubscribeSettings) this.unsubscribeSettings();
 
+        // Capture the date this listener was set up for so we can detect stale callbacks
+        const listenerDate = this.viewingDate;
+
         // 1. Day Listener
         this.unsubscribeDay = onSnapshot(dayRef, (snap) => {
             if (this.isSyncing) return;
 
+            // CRITICAL: If the user has navigated away from the date this listener
+            // was created for, ignore the callback to prevent cross-date overwrites.
+            if (this.viewingDate !== listenerDate) {
+                console.log(`Ignoring stale day snapshot for ${listenerDate} (now viewing ${this.viewingDate})`);
+                return;
+            }
+
             if (snap.exists()) {
                 const cloudData = snap.data();
-                const localKey = `box-cal-day-${this.viewingDate}`;
+                const localKey = `box-cal-day-${listenerDate}`;
                 const localDayRaw = localStorage.getItem(localKey);
                 const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
 
                 if (!localDay || cloudData.lastUpdated > (localDay.lastUpdated || 0)) {
                     this.isSyncing = true;
-                    this.state.currentDay = cloudData;
-                    this.state.currentDay.date = this.viewingDate; // Force correct date context
+                    this.state.currentDay = { ...cloudData, date: listenerDate };
                     this.saveLocalState(true);
                     this.renderUI();
                     this.isSyncing = false;
@@ -282,10 +313,10 @@ const BoxCal = {
                 // If we have local data, check if it's stale
                 const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
                 if ((this.state.currentDay.lastUpdated || 0) <= lastWipe) {
-                    console.log(`Day ${this.viewingDate} is empty in cloud and local is stale — clearing.`);
+                    console.log(`Day ${listenerDate} is empty in cloud and local is stale — clearing.`);
                     this.isSyncing = true;
-                    this.state.currentDay = { date: this.viewingDate, filledBoxes: {}, activeMeal: 'breakfast' };
-                    localStorage.removeItem(`box-cal-day-${this.viewingDate}`);
+                    this.state.currentDay = { date: listenerDate, filledBoxes: {}, activeMeal: 'breakfast' };
+                    localStorage.removeItem(`box-cal-day-${listenerDate}`);
                     this.renderUI();
                     this.isSyncing = false;
                 }
@@ -576,31 +607,476 @@ const BoxCal = {
     },
 
     async fetchHistory() {
-        if (!this.user) return;
+        if (!this.user) {
+            // Still render stats panel with local history data
+            this.renderStatsPanel();
+            return;
+        }
 
         try {
             const daysRef = collection(db, "users", this.user.uid, "days");
-            const q = query(daysRef, orderBy("date", "desc"), limit(50));
+            const q = query(daysRef, orderBy("date", "desc"), limit(100));
             const querySnapshot = await getDocs(q);
             
-            const history = [];
+            // Use a Map keyed by date to deduplicate entries.
+            // If Firestore has duplicate documents for the same date, 
+            // the one with the latest lastUpdated wins.
+            const historyMap = new Map();
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                const count = Object.keys(data.filledBoxes || {}).length;
-                history.push({
-                    date: data.date,
-                    calories: count * (this.state.settings.increment || 50)
+                const date = data.date || doc.id; // Use document ID as fallback
+                const filledBoxes = data.filledBoxes || {};
+                const inc = this.state.settings.increment || 50;
+                
+                // Per-meal calorie counts
+                const meals = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
+                Object.values(filledBoxes).forEach(meal => {
+                    if (meals[meal] !== undefined) meals[meal] += inc;
                 });
+                
+                const totalCals = Object.values(meals).reduce((a, b) => a + b, 0);
+                
+                const existing = historyMap.get(date);
+                if (!existing || (data.lastUpdated || 0) > (existing._lastUpdated || 0)) {
+                    historyMap.set(date, {
+                        date: date,
+                        calories: totalCals,
+                        meals: meals,
+                        _lastUpdated: data.lastUpdated || 0
+                    });
+                }
             });
+
+            // Convert map to sorted array (desc by date)
+            const history = Array.from(historyMap.values())
+                .map(({ _lastUpdated, ...rest }) => rest) // Strip internal field
+                .sort((a, b) => b.date.localeCompare(a.date));
 
             if (history.length > 0) {
                 this.state.history = history;
                 this.saveLocalState(true);
-                this.renderHistory();
             }
+            
+            this.renderStatsPanel();
         } catch (e) {
             console.error("Error fetching history:", e);
+            this.renderStatsPanel(); // Render with local data even if fetch fails
         }
+    },
+
+    statsChart: null,
+    statsRange: 7,
+
+    getFilteredHistory() {
+        const sorted = [...this.state.history].sort((a, b) => a.date.localeCompare(b.date));
+        if (this.statsRange === 'all') return sorted;
+
+        // Filter by actual calendar days, not entry count
+        const today = new Date(this.getTodayDate() + 'T12:00:00');
+        const cutoff = new Date(today);
+        cutoff.setDate(cutoff.getDate() - this.statsRange);
+        const cutoffStr = cutoff.toISOString().split('T')[0];
+
+        return sorted.filter(h => h.date >= cutoffStr);
+    },
+
+    renderStatsPanel() {
+        const history = this.state.history;
+        const filtered = this.getFilteredHistory();
+        
+        this.renderStatsOverview(history);
+        this.renderStatsChart(filtered);
+        this.renderMealBreakdown(filtered);
+        this.renderStatsRecords(history);
+        this.renderHistory();
+        this.setupRangeToggle();
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    renderStatsOverview(history) {
+        const totalCals = history.reduce((sum, h) => sum + h.calories, 0);
+        const daysTracked = history.filter(h => h.calories > 0).length;
+        const avgDaily = daysTracked > 0 ? Math.round(totalCals / daysTracked) : 0;
+        const streak = this.calculateStreak(history);
+
+        document.getElementById('stat-total-cals').textContent = totalCals.toLocaleString();
+        document.getElementById('stat-days-tracked').textContent = daysTracked.toLocaleString();
+        document.getElementById('stat-avg-daily').textContent = avgDaily.toLocaleString();
+        document.getElementById('stat-streak').textContent = streak;
+    },
+
+    calculateStreak(history) {
+        if (history.length === 0) return 0;
+        
+        // Sort by date descending
+        const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
+        let streak = 0;
+        const today = this.getTodayDate();
+        let checkDate = new Date(today + 'T12:00:00');
+        
+        for (const entry of sorted) {
+            const entryDate = entry.date;
+            const expected = checkDate.toISOString().split('T')[0];
+            
+            if (entryDate === expected && entry.calories > 0) {
+                streak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else if (entryDate < expected) {
+                // Gap found
+                break;
+            }
+        }
+        
+        return streak;
+    },
+
+    renderStatsChart(history) {
+        const canvas = document.getElementById('stats-chart');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        
+        // Destroy previous chart if exists
+        if (this.statsChart) {
+            this.statsChart.destroy();
+            this.statsChart = null;
+        }
+
+        // history is already filtered and sorted ascending by caller
+        const filtered = history;
+        
+        if (filtered.length === 0) {
+            this.statsChart = null;
+            return;
+        }
+
+        const labels = filtered.map(h => {
+            const d = new Date(h.date + 'T12:00:00');
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        });
+
+        const calData = filtered.map(h => h.calories);
+        const goal = this.state.settings.dailyGoal;
+        const goalLine = filtered.map(() => goal);
+
+        // Color styling
+        const accentRgb = '102, 178, 229'; // hsl(200, 85%, 55%) approximation
+        const dangerRgb = '234, 142, 65';  // dinner orange
+
+        this.statsChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Calories',
+                        data: calData,
+                        borderColor: `rgba(${accentRgb}, 1)`,
+                        backgroundColor: (context) => {
+                            const chart = context.chart;
+                            const { ctx: c, chartArea } = chart;
+                            if (!chartArea) return `rgba(${accentRgb}, 0.1)`;
+                            const gradient = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                            gradient.addColorStop(0, `rgba(${accentRgb}, 0.25)`);
+                            gradient.addColorStop(1, `rgba(${accentRgb}, 0.02)`);
+                            return gradient;
+                        },
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: filtered.length > 14 ? 0 : 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: `rgba(${accentRgb}, 1)`,
+                        pointBorderColor: 'rgba(255,255,255,0.9)',
+                        pointBorderWidth: 2,
+                    },
+                    {
+                        label: 'Goal',
+                        data: goalLine,
+                        borderColor: `rgba(${dangerRgb}, 0.5)`,
+                        borderWidth: 1.5,
+                        borderDash: [6, 4],
+                        fill: false,
+                        tension: 0,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'hsl(220, 25%, 12%)',
+                        titleColor: 'hsl(0, 0%, 98%)',
+                        bodyColor: 'hsl(220, 10%, 60%)',
+                        borderColor: 'hsla(0, 0%, 100%, 0.08)',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 10,
+                        titleFont: { family: 'Outfit', weight: '700', size: 13 },
+                        bodyFont: { family: 'Outfit', size: 12 },
+                        displayColors: false,
+                        callbacks: {
+                            label: (ctx) => {
+                                if (ctx.datasetIndex === 0) return `${ctx.parsed.y.toLocaleString()} cal`;
+                                return `Goal: ${ctx.parsed.y.toLocaleString()}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: 'hsl(220, 10%, 40%)',
+                            font: { family: 'Outfit', size: 10, weight: '600' },
+                            maxTicksLimit: 7,
+                            maxRotation: 0
+                        },
+                        grid: { display: false },
+                        border: { display: false }
+                    },
+                    y: {
+                        ticks: {
+                            color: 'hsl(220, 10%, 40%)',
+                            font: { family: 'Outfit', size: 10, weight: '600' },
+                            callback: (val) => val >= 1000 ? (val / 1000).toFixed(1) + 'k' : val,
+                            maxTicksLimit: 5
+                        },
+                        grid: {
+                            color: 'hsla(0, 0%, 100%, 0.04)',
+                            drawTicks: false
+                        },
+                        border: { display: false },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    },
+
+    renderMealBreakdown(history) {
+        const container = document.getElementById('meal-breakdown-bars');
+        if (!container) return;
+
+        const daysWithData = history.filter(h => h.calories > 0);
+        const count = daysWithData.length || 1;
+
+        const totals = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
+        daysWithData.forEach(h => {
+            if (h.meals) {
+                MEALS.forEach(m => { totals[m] += (h.meals[m] || 0); });
+            }
+        });
+
+        const averages = {};
+        MEALS.forEach(m => { averages[m] = Math.round(totals[m] / count); });
+        const maxAvg = Math.max(...Object.values(averages), 1);
+
+        const mealColors = {
+            breakfast: 'var(--breakfast)',
+            lunch: 'var(--lunch)',
+            dinner: 'var(--dinner)',
+            snacks: 'var(--snacks)'
+        };
+
+        const mealLabels = {
+            breakfast: 'Bfast',
+            lunch: 'Lunch',
+            dinner: 'Dinner',
+            snacks: 'Snacks'
+        };
+
+        container.innerHTML = MEALS.map(meal => {
+            const pct = Math.round((averages[meal] / maxAvg) * 100);
+            return `
+                <div class="meal-bar-row">
+                    <div class="meal-bar-label">
+                        <span class="meal-bar-dot" style="background:${mealColors[meal]};box-shadow:0 0 6px ${mealColors[meal]};"></span>
+                        ${mealLabels[meal]}
+                    </div>
+                    <div class="meal-bar-track">
+                        <div class="meal-bar-fill" style="width:${pct}%;background:${mealColors[meal]};box-shadow:0 0 8px ${mealColors[meal]}44;"></div>
+                    </div>
+                    <span class="meal-bar-value">${averages[meal].toLocaleString()}</span>
+                </div>
+            `;
+        }).join('');
+    },
+
+    renderStatsRecords(history) {
+        const goal = this.state.settings.dailyGoal;
+        const withData = history.filter(h => h.calories > 0);
+
+        const formatDate = (dateStr) => {
+            const d = new Date(dateStr + 'T12:00:00');
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        };
+
+        if (withData.length === 0) {
+            document.getElementById('stat-best-day').textContent = '—';
+            document.getElementById('stat-worst-day').textContent = '—';
+            document.getElementById('stat-under-goal').textContent = '—';
+            return;
+        }
+
+        const best = withData.reduce((a, b) => a.calories > b.calories ? a : b);
+        const worst = withData.reduce((a, b) => a.calories < b.calories ? a : b);
+        const underGoalCount = withData.filter(h => h.calories <= goal).length;
+        const underGoalPct = Math.round((underGoalCount / withData.length) * 100);
+
+        document.getElementById('stat-best-day').textContent = `${best.calories.toLocaleString()} cal · ${formatDate(best.date)}`;
+        document.getElementById('stat-worst-day').textContent = `${worst.calories.toLocaleString()} cal · ${formatDate(worst.date)}`;
+        document.getElementById('stat-under-goal').textContent = `${underGoalPct}% (${underGoalCount}/${withData.length} days)`;
+    },
+
+    setupRangeToggle() {
+        const buttons = document.querySelectorAll('.range-btn');
+        buttons.forEach(btn => {
+            // Remove old listeners by cloning
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+            
+            newBtn.addEventListener('click', () => {
+                document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                newBtn.classList.add('active');
+                
+                const range = newBtn.dataset.range;
+                this.statsRange = range === 'all' ? 'all' : parseInt(range);
+                const filtered = this.getFilteredHistory();
+                this.renderStatsChart(filtered);
+                this.renderMealBreakdown(filtered);
+            });
+        });
+    },
+
+    renderHistory() {
+        const list = document.getElementById('history-list');
+        const goal = this.state.settings.dailyGoal;
+
+        if (this.state.history.length === 0) {
+            list.innerHTML = '<div class="history-item"><span class="history-date">No history yet.</span></div>';
+            return;
+        }
+
+        // Group entries by month (YYYY-MM)
+        const monthGroups = new Map();
+        this.state.history.forEach(entry => {
+            const monthKey = entry.date.substring(0, 7); // "YYYY-MM"
+            if (!monthGroups.has(monthKey)) {
+                monthGroups.set(monthKey, []);
+            }
+            monthGroups.get(monthKey).push(entry);
+        });
+
+        // Current month key for deciding which is expanded
+        const currentMonthKey = this.getTodayDate().substring(0, 7);
+
+        list.innerHTML = '';
+
+        monthGroups.forEach((entries, monthKey) => {
+            const isCurrentMonth = (monthKey === currentMonthKey);
+
+            // Calculate month summary
+            const daysWithData = entries.filter(e => e.calories > 0);
+            const totalCals = daysWithData.reduce((sum, e) => sum + e.calories, 0);
+            const avgCals = daysWithData.length > 0 ? Math.round(totalCals / daysWithData.length) : 0;
+
+            // Month header label
+            const [year, month] = monthKey.split('-');
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            const monthLabel = monthDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+            // Create month group container
+            const group = document.createElement('div');
+            group.className = `history-month-group${isCurrentMonth ? ' expanded' : ''}`;
+
+            // Month header (clickable to expand/collapse)
+            const header = document.createElement('button');
+            header.className = 'history-month-header';
+            header.innerHTML = `
+                <div class="history-month-left">
+                    <i data-lucide="chevron-right" class="history-month-chevron"></i>
+                    <span class="history-month-label">${monthLabel}</span>
+                </div>
+                <div class="history-month-summary">
+                    <span class="history-month-days">${daysWithData.length} day${daysWithData.length !== 1 ? 's' : ''}</span>
+                    <span class="history-month-avg">avg ${avgCals.toLocaleString()}</span>
+                </div>
+            `;
+
+            // Day entries container
+            const body = document.createElement('div');
+            body.className = 'history-month-body';
+
+            entries.forEach(entry => {
+                const d = new Date(entry.date + 'T12:00:00');
+                const str = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                
+                const isOver = entry.calories > goal;
+                const badgeClass = isOver ? 'over' : 'under';
+                const badgeText = isOver ? `+${(entry.calories - goal).toLocaleString()}` : 'On track';
+                
+                // Build meal dots
+                let mealDotsHtml = '';
+                if (entry.meals) {
+                    const mealColors = {
+                        breakfast: 'var(--breakfast)',
+                        lunch: 'var(--lunch)',
+                        dinner: 'var(--dinner)',
+                        snacks: 'var(--snacks)'
+                    };
+                    mealDotsHtml = '<div class="history-meal-dots">';
+                    MEALS.forEach(meal => {
+                        if (entry.meals[meal] > 0) {
+                            mealDotsHtml += `<span class="history-meal-dot" style="background:${mealColors[meal]};"></span>`;
+                        }
+                    });
+                    mealDotsHtml += '</div>';
+                }
+                
+                const item = document.createElement('div');
+                item.className = 'history-item clickable';
+                item.innerHTML = `
+                    <div class="history-item-content">
+                        <span class="history-date">${str}</span>
+                        <div class="history-item-meta">
+                            ${mealDotsHtml}
+                            ${entry.calories > 0 ? `<span class="history-goal-badge ${badgeClass}">${badgeText}</span>` : ''}
+                        </div>
+                    </div>
+                    <span class="history-cals">${entry.calories.toLocaleString()} cal</span>
+                `;
+                item.addEventListener('click', () => {
+                    this.viewingDate = entry.date;
+                    if (this.fp) this.fp.setDate(this.viewingDate, false);
+                    this.loadDay(this.viewingDate);
+                    this.renderUI();
+                    document.getElementById('history-modal').classList.remove('active');
+                    if (this.user) this.startCloudSync();
+                });
+                body.appendChild(item);
+            });
+
+            // Toggle expand/collapse on header click
+            header.addEventListener('click', () => {
+                group.classList.toggle('expanded');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            });
+
+            group.appendChild(header);
+            group.appendChild(body);
+            list.appendChild(group);
+        });
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     // ── Render ─────────────────────────────────────────
@@ -728,36 +1204,8 @@ const BoxCal = {
         }
     },
 
-    renderHistory() {
-        const list = document.getElementById('history-list');
-
-        if (this.state.history.length === 0) {
-            list.innerHTML = '<div class="history-item"><span class="history-date">No history yet.</span></div>';
-            return;
-        }
-
-        list.innerHTML = '';
-        this.state.history.forEach(entry => {
-            const d = new Date(entry.date + 'T12:00:00');
-            const str = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-            
-            const item = document.createElement('div');
-            item.className = 'history-item clickable';
-            item.innerHTML = `
-                <span class="history-date">${str}</span>
-                <span class="history-cals">${entry.calories.toLocaleString()} cal</span>
-            `;
-            item.addEventListener('click', () => {
-                this.viewingDate = entry.date;
-                if (this.fp) this.fp.setDate(this.viewingDate, false);
-                this.loadDay(this.viewingDate);
-                this.renderUI();
-                document.getElementById('history-modal').classList.remove('active');
-                if (this.user) this.startCloudSync();
-            });
-            list.appendChild(item);
-        });
-    },
+    // renderHistory is defined above in the stats panel section (line ~949)
+    // with rich formatting (meal dots, goal badges, click-to-navigate).
 
     syncMealButtons() {
         const active = this.state.currentDay.activeMeal;
