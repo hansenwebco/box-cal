@@ -24,9 +24,16 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
+console.log("Initializing Firebase...");
 const app = initializeApp(firebaseConfig);
+
+// Using getFirestore for standard initialization
+// If you experience issues with WebSockets on your domain, you can switch to 
+// initializeFirestore with experimentalForceLongPolling: true
 const db = getFirestore(app);
 const auth = getAuth(app);
+
+console.log("Firebase initialized successfully.");
 
 // Providers
 const providers = {
