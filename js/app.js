@@ -5,7 +5,7 @@
 
 import { 
     db, auth, providers, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-    onAuthStateChanged, signOut, doc, getDoc, setDoc, onSnapshot,
+    onAuthStateChanged, signOut, doc, getDoc, setDoc, onSnapshot, deleteDoc,
     collection, query, orderBy, limit, getDocs 
 } from './firebase.js';
 
@@ -22,7 +22,6 @@ const BoxCal = {
         },
         currentDay: {
             date: '',
-            // filledBoxes: { [index]: mealType }
             filledBoxes: {},
             activeMeal: 'breakfast'
         },
@@ -30,19 +29,38 @@ const BoxCal = {
         lastUpdated: 0
     },
 
+    currentDate: '', // The date currently being viewed
+    viewingDate: '', // Format: YYYY-MM-DD
+
     user: null,
     isSyncing: false,
     isLoggingIn: false,
     isLongPress: false,
-    unsubscribeSnapshot: null,
+    unsubscribeDay: null,
+    unsubscribeSettings: null,
+    fp: null,
 
     // ── Init ───────────────────────────────────────────
     init() {
+        this.currentDate = this.getTodayDate();
+        this.viewingDate = this.currentDate;
+        
         this.loadLocalState();
-        this.checkDailyReset();
         this.renderUI();
         this.setupEventListeners();
         this.setupAuthListener();
+        this.setupModalScrollLock();
+    },
+
+    /** Lock body scroll whenever any .modal has .active */
+    setupModalScrollLock() {
+        const observer = new MutationObserver(() => {
+            const anyOpen = document.querySelector('.modal.active');
+            document.body.classList.toggle('modal-open', !!anyOpen);
+        });
+        document.querySelectorAll('.modal').forEach(modal => {
+            observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+        });
     },
 
     setupAuthListener() {
@@ -64,63 +82,95 @@ const BoxCal = {
 
     // ── Persistence ────────────────────────────────────
     loadLocalState() {
-        const DEFAULT = {
-            version: STATE_VERSION,
-            settings: { dailyGoal: 2000, increment: 50 },
-            currentDay: { date: this.getTodayDate(), filledBoxes: {}, activeMeal: 'breakfast' },
-            history: [],
-            lastUpdated: 0
-        };
-
-        try {
-            const raw = localStorage.getItem('box-cal-state');
-            if (!raw) { this.state = DEFAULT; this.saveLocalState(); return; }
-
-            const parsed = JSON.parse(raw);
-
-            if (!parsed.version || parsed.version < STATE_VERSION) {
-                DEFAULT.history = Array.isArray(parsed.history) ? parsed.history : [];
-                this.state = DEFAULT;
-                this.saveLocalState();
-                return;
-            }
-
-            this.state = {
-                version: STATE_VERSION,
-                settings: { ...DEFAULT.settings, ...(parsed.settings || {}) },
-                currentDay: { ...DEFAULT.currentDay, ...(parsed.currentDay || {}) },
-                history: parsed.history || [],
-                lastUpdated: parsed.lastUpdated || 0
-            };
-
-            if (this.state.settings.increment < 50) this.state.settings.increment = 50;
-
-            if (typeof this.state.currentDay.filledBoxes !== 'object' || Array.isArray(this.state.currentDay.filledBoxes)) {
-                this.state.currentDay.filledBoxes = {};
-            }
-            if (!MEALS.includes(this.state.currentDay.activeMeal)) {
-                this.state.currentDay.activeMeal = 'breakfast';
-            }
-
-        } catch (e) {
-            console.error('Box-Cal: could not load local state.', e);
-            this.state = DEFAULT;
+        // 1. Load Settings
+        const savedSettings = localStorage.getItem('box-cal-settings');
+        if (savedSettings) {
+            try {
+                this.state.settings = JSON.parse(savedSettings);
+            } catch (e) { console.error("Error loading settings", e); }
         }
+
+        // 2. Load History
+        const savedHistory = localStorage.getItem('box-cal-history');
+        if (savedHistory) {
+            try {
+                this.state.history = JSON.parse(savedHistory);
+            } catch (e) { console.error("Error loading history", e); }
+        }
+
+        // 3. Load Current Viewing Day
+        this.loadDay(this.viewingDate);
+    },
+
+    loadDay(date) {
+        const key = `box-cal-day-${date}`;
+        const savedDay = localStorage.getItem(key);
+        
+        if (savedDay) {
+            try {
+                this.state.currentDay = JSON.parse(savedDay);
+                // Ensure the date property is correctly set to what we requested
+                this.state.currentDay.date = date;
+            } catch (e) {
+                console.error("Error loading day data", e);
+                this.state.currentDay = { date: date, filledBoxes: {}, activeMeal: 'breakfast' };
+            }
+        } else {
+            this.state.currentDay = { date: date, filledBoxes: {}, activeMeal: 'breakfast' };
+        }
+        
+        // Ensure some sanity
+        if (!this.state.currentDay.filledBoxes) this.state.currentDay.filledBoxes = {};
+        if (!this.state.currentDay.activeMeal) this.state.currentDay.activeMeal = 'breakfast';
     },
 
     saveLocalState(skipTimestamp = false) {
         if (!skipTimestamp) {
             this.state.lastUpdated = Date.now();
         }
-        localStorage.setItem('box-cal-state', JSON.stringify(this.state));
+        
+        // Save settings
+        localStorage.setItem('box-cal-settings', JSON.stringify(this.state.settings));
+        
+        // CRITICAL: viewingDate is the single source of truth for which day slot we write to.
+        // Always force currentDay.date to match before saving, preventing ghost documents.
+        const saveDate = this.viewingDate;
+        this.state.currentDay.date = saveDate;
+        const dayKey = `box-cal-day-${saveDate}`;
+        localStorage.setItem(dayKey, JSON.stringify(this.state.currentDay));
+        
+        // Save history (cache)
+        localStorage.setItem('box-cal-history', JSON.stringify(this.state.history));
+        
+        // Legacy support / overall metadata
+        localStorage.setItem('box-cal-last-updated', this.state.lastUpdated);
     },
 
     async saveState() {
         this.saveLocalState();
         
         if (this.user && !this.isSyncing) {
+            // Snapshot viewingDate at the time of call so async doesn't race with date navigation
+            const saveDate = this.viewingDate;
+            if (!saveDate) {
+                console.warn('saveState: no date available, skipping cloud save');
+                return;
+            }
+
             try {
-                await setDoc(doc(db, "users", this.user.uid), this.state);
+                // Save settings to user doc
+                await setDoc(doc(db, "users", this.user.uid), { 
+                    settings: this.state.settings,
+                    lastUpdated: this.state.lastUpdated 
+                }, { merge: true });
+
+                // Save day to sub-collection using the snapshotted date
+                const dayRef = doc(db, "users", this.user.uid, "days", saveDate);
+                await setDoc(dayRef, {
+                    ...this.state.currentDay,
+                    date: saveDate,
+                    lastUpdated: this.state.lastUpdated
+                });
             } catch (e) {
                 console.error("Error saving to cloud:", e);
             }
@@ -128,115 +178,174 @@ const BoxCal = {
     },
 
     async startCloudSync() {
-        const docRef = doc(db, "users", this.user.uid);
+        const userRef = doc(db, "users", this.user.uid);
+        const dayRef = doc(db, "users", this.user.uid, "days", this.viewingDate);
         
         try {
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const serverData = docSnap.data();
-                const localData = this.state;
+            // 1. Sync Settings & Check for Wipe
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
                 
-                // If they JUST logged in via button/form, we ask for a decision
-                if (this.isLoggingIn) {
-                    const hasLocalData = Object.keys(localData.currentDay.filledBoxes).length > 0 || localData.history.length > 0;
-                    if (hasLocalData && this.isDifferent(localData, serverData)) {
-                        this.showConflictModal(serverData);
-                        this.isLoggingIn = false;
-                        return;
+                // CRITICAL: Check for remote wipe signal before doing anything else
+                if (userData.wipedAt && this.handleRemoteWipe(userData.wipedAt)) return;
+
+                if (userData.settings) {
+                    this.state.settings = { ...this.state.settings, ...userData.settings };
+                }
+            }
+
+            // 2. Sync Current Day
+            // Snapshot the date we're syncing for — if user navigates during async, bail out
+            const syncDate = this.viewingDate;
+            const daySnap = await getDoc(dayRef);
+
+            // Bail if user navigated away during the async fetch
+            if (this.viewingDate !== syncDate) {
+                console.log(`User navigated from ${syncDate} to ${this.viewingDate} during sync — aborting stale sync.`);
+                return;
+            }
+
+            if (daySnap.exists()) {
+                const cloudDay = daySnap.data();
+                const localKey = `box-cal-day-${syncDate}`;
+                const localDayRaw = localStorage.getItem(localKey);
+                const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
+
+                if (!localDay || cloudDay.lastUpdated > (localDay.lastUpdated || 0)) {
+                    this.state.currentDay = { ...cloudDay, date: syncDate };
+                    this.saveLocalState(true);
+                    this.renderUI();
+                } else if (localDay && localDay.lastUpdated > (cloudDay.lastUpdated || 0)) {
+                    // Push local to cloud — ensure date field is correct
+                    await setDoc(dayRef, { ...localDay, date: syncDate });
+                }
+            } else {
+                // Cloud doesn't have this day yet. 
+                // Only push local if it's not stale relative to the last known wipe.
+                const localKey = `box-cal-day-${syncDate}`;
+                const localDayRaw = localStorage.getItem(localKey);
+                if (localDayRaw) {
+                    try {
+                        const localDay = JSON.parse(localDayRaw);
+                        const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
+                        
+                        if ((localDay.lastUpdated || 0) > lastWipe) {
+                            await setDoc(dayRef, { ...localDay, date: syncDate });
+                        } else {
+                            // This is ghost data from before a wipe — discard it
+                            console.log(`Discarding stale local data for ${syncDate}`);
+                            localStorage.removeItem(localKey);
+                            this.loadDay(syncDate); // Reset in-memory state
+                            this.renderUI();
+                        }
+                    } catch (e) {
+                        console.error("Error parsing local day during sync:", e);
                     }
                 }
-
-                // Otherwise (Refresh or No Conflict), do a silent smart merge
-                const merged = this.mergeStates(localData, serverData);
-                
-                let changedLocal = this.isDifferent(localData, merged);
-                let changedServer = this.isDifferent(serverData, merged);
-
-                if (changedLocal) {
-                    this.state = merged;
-                    this.saveLocalState(true);
-                }
-                
-                if (changedServer) {
-                    await setDoc(docRef, merged);
-                }
-
-                this.renderUI();
-            } else {
-                // No server data, push local data
-                await this.saveState();
             }
 
             this.isLoggingIn = false;
-            this.setupRealtimeSync(docRef);
+            this.setupSyncListeners(userRef, dayRef);
         } catch (e) {
             console.error("Cloud sync failed:", e);
         }
     },
 
-    isDifferent(a, b) {
-        if (!a || !b) return true;
-        const aComp = { ...a };
-        const bComp = { ...b };
-        delete aComp.lastUpdated;
-        delete bComp.lastUpdated;
-        return JSON.stringify(aComp) !== JSON.stringify(bComp);
-    },
+    handleRemoteWipe(cloudWipedAt) {
+        const lastSeenWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
+        if (cloudWipedAt > lastSeenWipe) {
+            console.log('Remote wipe detected — resetting local state.');
+            
+            // Prevent any outgoing saves while we are wiping
+            this.isSyncing = true;
 
-    mergeStates(local, server) {
-        // 1. Settings (Take newest)
-        const settings = (local.lastUpdated >= server.lastUpdated) ? local.settings : server.settings;
-
-        // 2. Current Day
-        let currentDay;
-        if (local.currentDay.date === server.currentDay.date) {
-            // Same day: Merge boxes
-            currentDay = {
-                ...((local.lastUpdated >= server.lastUpdated) ? local.currentDay : server.currentDay),
-                filledBoxes: { ...server.currentDay.filledBoxes, ...local.currentDay.filledBoxes }
-            };
-        } else {
-            // Different days: take whichever is newer
-            currentDay = (local.lastUpdated >= server.lastUpdated) ? local.currentDay : server.currentDay;
+            localStorage.setItem('box-cal-wiped-at', cloudWipedAt);
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('box-cal-') && key !== 'box-cal-wiped-at') {
+                    localStorage.removeItem(key);
+                }
+            });
+            
+            // Force a clean state before reload just in case
+            this.state.currentDay = { date: this.getTodayDate(), filledBoxes: {}, activeMeal: 'breakfast' };
+            this.state.history = [];
+            
+            location.reload();
+            return true;
         }
-
-        // 3. History (Merge and unique by date)
-        const historyMap = {};
-        [...(server.history || []), ...(local.history || [])].forEach(entry => {
-            if (!historyMap[entry.date] || historyMap[entry.date].calories < entry.calories) {
-                historyMap[entry.date] = entry;
-            }
-        });
-        const history = Object.values(historyMap)
-            .sort((a, b) => b.date.localeCompare(a.date))
-            .slice(0, 50);
-
-        return {
-            version: Math.max(local.version || 0, server.version || 0),
-            settings,
-            currentDay,
-            history,
-            lastUpdated: Math.max(local.lastUpdated || 0, server.lastUpdated || 0)
-        };
+        return false;
     },
 
-    setupRealtimeSync(docRef) {
-        if (this.unsubscribeSnapshot) this.unsubscribeSnapshot();
+    setupSyncListeners(userRef, dayRef) {
+        if (this.unsubscribeDay) this.unsubscribeDay();
+        if (this.unsubscribeSettings) this.unsubscribeSettings();
 
-        this.unsubscribeSnapshot = onSnapshot(docRef, (doc) => {
-            if (doc.exists() && !this.isSyncing) {
-                this.isSyncing = true;
-                const cloudData = doc.data();
-                
-                if (this.isDifferent(cloudData, this.state)) {
-                    this.state = cloudData;
+        // Capture the date this listener was set up for so we can detect stale callbacks
+        const listenerDate = this.viewingDate;
+
+        // 1. Day Listener
+        this.unsubscribeDay = onSnapshot(dayRef, (snap) => {
+            if (this.isSyncing) return;
+
+            // CRITICAL: If the user has navigated away from the date this listener
+            // was created for, ignore the callback to prevent cross-date overwrites.
+            if (this.viewingDate !== listenerDate) {
+                console.log(`Ignoring stale day snapshot for ${listenerDate} (now viewing ${this.viewingDate})`);
+                return;
+            }
+
+            if (snap.exists()) {
+                const cloudData = snap.data();
+                const localKey = `box-cal-day-${listenerDate}`;
+                const localDayRaw = localStorage.getItem(localKey);
+                const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
+
+                if (!localDay || cloudData.lastUpdated > (localDay.lastUpdated || 0)) {
+                    this.isSyncing = true;
+                    this.state.currentDay = { ...cloudData, date: listenerDate };
                     this.saveLocalState(true);
                     this.renderUI();
+                    this.isSyncing = false;
                 }
+            } else {
+                // Document deleted remotely (e.g. via wipe or erase)
+                // If we have local data, check if it's stale
+                const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
+                if ((this.state.currentDay.lastUpdated || 0) <= lastWipe) {
+                    console.log(`Day ${listenerDate} is empty in cloud and local is stale — clearing.`);
+                    this.isSyncing = true;
+                    this.state.currentDay = { date: listenerDate, filledBoxes: {}, activeMeal: 'breakfast' };
+                    localStorage.removeItem(`box-cal-day-${listenerDate}`);
+                    this.renderUI();
+                    this.isSyncing = false;
+                }
+            }
+        });
+
+        // 2. Settings Listener
+        this.unsubscribeSettings = onSnapshot(userRef, (snap) => {
+            if (!snap.exists()) return;
+            const cloudData = snap.data();
+
+            // ── Remote wipe detection ──────────────────────────────────────
+            if (cloudData.wipedAt && this.handleRemoteWipe(cloudData.wipedAt)) return;
+            // ──────────────────────────────────────────────────────────────
+
+            if (!this.isSyncing && cloudData.settings && cloudData.lastUpdated > (this.state.lastUpdated || 0)) {
+                this.isSyncing = true;
+                this.state.settings = { ...this.state.settings, ...cloudData.settings };
+                this.state.lastUpdated = cloudData.lastUpdated;
+                this.saveLocalState(true);
+                this.renderUI();
                 this.isSyncing = false;
             }
         });
     },
+
+    // Removed isDifferent and mergeStates in favor of per-day timestamped sync.
+
+    // Removed old setupRealtimeSync in favor of setupSyncListeners
 
     showConflictModal(serverData) {
         const modal = document.getElementById('conflict-modal');
@@ -392,72 +501,624 @@ const BoxCal = {
     },
 
     getTodayDate() {
-        return new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     },
 
-    // ── Daily Reset ────────────────────────────────────
-    async checkDailyReset() {
-        const today = this.getTodayDate();
-        if (this.state.currentDay.date === today) return;
+    // Removed checkDailyReset as per-day storage handles it naturally.
 
-        const filled = this.state.currentDay.filledBoxes || {};
-        const count = Object.keys(filled).length;
-
-        if (count > 0) {
-            const historyEntry = {
-                date: this.state.currentDay.date,
-                calories: count * this.state.settings.increment
-            };
-
-            // Keep in local state for immediate view
-            this.state.history.unshift(historyEntry);
-            this.state.history = this.state.history.slice(0, 30); // Cache last 30 locally
-
-            // Save to dedicated sub-collection if logged in
-            if (this.user) {
-                try {
-                    const histRef = doc(db, "users", this.user.uid, "history", historyEntry.date);
-                    await setDoc(histRef, historyEntry);
-                } catch (e) {
-                    console.error("Error saving day history:", e);
-                }
-            }
+    async handleDebugData() {
+        if (!this.user) {
+            alert("Please log in to see server data.");
+            return;
         }
 
-        this.state.currentDay = { date: today, filledBoxes: {}, activeMeal: 'breakfast' };
-        this.saveState();
+        const debugModal = document.getElementById('debug-modal');
+        const output = document.getElementById('debug-output');
+        output.textContent = "Fetching data from server...";
+        debugModal.classList.add('active');
+
+        try {
+            const userRef = doc(db, "users", this.user.uid);
+            const userSnap = await getDoc(userRef);
+            
+            const daysRef = collection(db, "users", this.user.uid, "days");
+            const daysSnap = await getDocs(query(daysRef, orderBy("date", "desc"), limit(10)));
+            
+            const serverData = {
+                user: userSnap.exists() ? userSnap.data() : "No user doc",
+                recentDays: []
+            };
+
+            daysSnap.forEach(doc => {
+                serverData.recentDays.push(doc.data());
+            });
+
+            output.textContent = JSON.stringify(serverData, null, 2);
+        } catch (e) {
+            output.textContent = "Error fetching data: " + e.message;
+        }
+    },
+
+    async deleteAllData() {
+        this.showConfirm(
+            'Wipe All Data',
+            'This will PERMANENTLY delete all calorie logs from every day. Your account and settings will remain. This cannot be undone.',
+            async () => {
+                const wipedAt = Date.now();
+                this.isSyncing = true; // Block normal sync during wipe
+
+                // 1. Clear Cloud Data (if logged in)
+                if (this.user) {
+                    try {
+                        // CRITICAL: Set local wipe timestamp FIRST so our own listener doesn't 
+                        // trigger a reload when we update the user document.
+                        localStorage.setItem('box-cal-wiped-at', wipedAt);
+
+                        // Signal all other devices to wipe immediately
+                        await setDoc(doc(db, "users", this.user.uid), { 
+                            lastUpdated: wipedAt,
+                            wipedAt: wipedAt
+                        }, { merge: true });
+
+                        const daysRef = collection(db, "users", this.user.uid, "days");
+                        const daysSnap = await getDocs(daysRef);
+                        
+                        // Delete all documents in the days sub-collection
+                        const deletePromises = [];
+                        daysSnap.forEach((doc) => {
+                            deletePromises.push(deleteDoc(doc.ref));
+                        });
+                        await Promise.all(deletePromises);
+                    } catch (e) {
+                        console.error("Error wiping cloud days:", e);
+                        alert("Failed to wipe some cloud data. Check console.");
+                    }
+                }
+
+                // 2. Clear Local Storage
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith('box-cal-') && key !== 'box-cal-wiped-at') {
+                        localStorage.removeItem(key);
+                    }
+                });
+                
+                // Ensure wipedAt is definitely set (it was set above, but just in case of non-user mode)
+                localStorage.setItem('box-cal-wiped-at', wipedAt);
+
+                // 3. Reload (Stay logged in)
+                location.reload();
+            }
+        );
+    },
+
+    copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('copy-debug');
+            const originalText = btn.textContent;
+            btn.textContent = "Copied!";
+            setTimeout(() => btn.textContent = originalText, 2000);
+        }).catch(err => {
+            console.error('Could not copy text: ', err);
+        });
     },
 
     async fetchHistory() {
-        if (!this.user) return;
+        if (!this.user) {
+            // Still render stats panel with local history data
+            this.renderStatsPanel();
+            return;
+        }
 
         try {
-            const histRef = collection(db, "users", this.user.uid, "history");
-            const q = query(histRef, orderBy("date", "desc"), limit(50)); // Fetch last 50
+            const daysRef = collection(db, "users", this.user.uid, "days");
+            const q = query(daysRef, orderBy("date", "desc"), limit(100));
             const querySnapshot = await getDocs(q);
             
-            const history = [];
+            // Use a Map keyed by date to deduplicate entries.
+            // If Firestore has duplicate documents for the same date, 
+            // the one with the latest lastUpdated wins.
+            const historyMap = new Map();
             querySnapshot.forEach((doc) => {
-                history.push(doc.data());
+                const data = doc.data();
+                const date = data.date || doc.id; // Use document ID as fallback
+                const filledBoxes = data.filledBoxes || {};
+                const inc = this.state.settings.increment || 50;
+                
+                // Per-meal calorie counts
+                const meals = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
+                Object.values(filledBoxes).forEach(meal => {
+                    if (meals[meal] !== undefined) meals[meal] += inc;
+                });
+                
+                const totalCals = Object.values(meals).reduce((a, b) => a + b, 0);
+                
+                const existing = historyMap.get(date);
+                if (!existing || (data.lastUpdated || 0) > (existing._lastUpdated || 0)) {
+                    historyMap.set(date, {
+                        date: date,
+                        calories: totalCals,
+                        meals: meals,
+                        _lastUpdated: data.lastUpdated || 0
+                    });
+                }
             });
+
+            // Convert map to sorted array (desc by date)
+            const history = Array.from(historyMap.values())
+                .map(({ _lastUpdated, ...rest }) => rest) // Strip internal field
+                .sort((a, b) => b.date.localeCompare(a.date));
 
             if (history.length > 0) {
                 this.state.history = history;
-                this.saveLocalState();
-                this.renderHistory();
+                this.saveLocalState(true);
             }
+            
+            this.renderStatsPanel();
         } catch (e) {
             console.error("Error fetching history:", e);
+            this.renderStatsPanel(); // Render with local data even if fetch fails
         }
+    },
+
+    statsChart: null,
+    statsRange: 7,
+
+    getFilteredHistory() {
+        const sorted = [...this.state.history].sort((a, b) => a.date.localeCompare(b.date));
+        if (this.statsRange === 'all') return sorted;
+
+        // Filter by actual calendar days, not entry count
+        const today = new Date(this.getTodayDate() + 'T12:00:00');
+        const cutoff = new Date(today);
+        cutoff.setDate(cutoff.getDate() - this.statsRange);
+        const cutoffStr = cutoff.toISOString().split('T')[0];
+
+        return sorted.filter(h => h.date >= cutoffStr);
+    },
+
+    renderStatsPanel() {
+        const history = this.state.history;
+        const filtered = this.getFilteredHistory();
+        
+        this.renderStatsOverview(history);
+        this.renderStatsChart(filtered);
+        this.renderMealBreakdown(filtered);
+        this.renderStatsRecords(history);
+        this.renderHistory();
+        this.setupRangeToggle();
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    renderStatsOverview(history) {
+        const totalCals = history.reduce((sum, h) => sum + h.calories, 0);
+        const daysTracked = history.filter(h => h.calories > 0).length;
+        const avgDaily = daysTracked > 0 ? Math.round(totalCals / daysTracked) : 0;
+        const streak = this.calculateStreak(history);
+
+        document.getElementById('stat-total-cals').textContent = totalCals.toLocaleString();
+        document.getElementById('stat-days-tracked').textContent = daysTracked.toLocaleString();
+        document.getElementById('stat-avg-daily').textContent = avgDaily.toLocaleString();
+        document.getElementById('stat-streak').textContent = streak;
+    },
+
+    calculateStreak(history) {
+        if (history.length === 0) return 0;
+        
+        // Sort by date descending
+        const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
+        let streak = 0;
+        const today = this.getTodayDate();
+        let checkDate = new Date(today + 'T12:00:00');
+        
+        for (const entry of sorted) {
+            const entryDate = entry.date;
+            const expected = checkDate.toISOString().split('T')[0];
+            
+            if (entryDate === expected && entry.calories > 0) {
+                streak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else if (entryDate < expected) {
+                // Gap found
+                break;
+            }
+        }
+        
+        return streak;
+    },
+
+    renderStatsChart(history) {
+        const canvas = document.getElementById('stats-chart');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        
+        // Destroy previous chart if exists
+        if (this.statsChart) {
+            this.statsChart.destroy();
+            this.statsChart = null;
+        }
+
+        // history is already filtered and sorted ascending by caller
+        const filtered = history;
+        
+        if (filtered.length === 0) {
+            this.statsChart = null;
+            return;
+        }
+
+        const labels = filtered.map(h => {
+            const d = new Date(h.date + 'T12:00:00');
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        });
+
+        const calData = filtered.map(h => h.calories);
+        const goal = this.state.settings.dailyGoal;
+        const goalLine = filtered.map(() => goal);
+
+        // Color styling
+        const accentRgb = '102, 178, 229'; // hsl(200, 85%, 55%) approximation
+        const dangerRgb = '234, 142, 65';  // dinner orange
+
+        this.statsChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Calories',
+                        data: calData,
+                        borderColor: `rgba(${accentRgb}, 1)`,
+                        backgroundColor: (context) => {
+                            const chart = context.chart;
+                            const { ctx: c, chartArea } = chart;
+                            if (!chartArea) return `rgba(${accentRgb}, 0.1)`;
+                            const gradient = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                            gradient.addColorStop(0, `rgba(${accentRgb}, 0.25)`);
+                            gradient.addColorStop(1, `rgba(${accentRgb}, 0.02)`);
+                            return gradient;
+                        },
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: filtered.length > 14 ? 0 : 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: `rgba(${accentRgb}, 1)`,
+                        pointBorderColor: 'rgba(255,255,255,0.9)',
+                        pointBorderWidth: 2,
+                    },
+                    {
+                        label: 'Goal',
+                        data: goalLine,
+                        borderColor: `rgba(${dangerRgb}, 0.5)`,
+                        borderWidth: 1.5,
+                        borderDash: [6, 4],
+                        fill: false,
+                        tension: 0,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'hsl(220, 25%, 12%)',
+                        titleColor: 'hsl(0, 0%, 98%)',
+                        bodyColor: 'hsl(220, 10%, 60%)',
+                        borderColor: 'hsla(0, 0%, 100%, 0.08)',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 10,
+                        titleFont: { family: 'Outfit', weight: '700', size: 13 },
+                        bodyFont: { family: 'Outfit', size: 12 },
+                        displayColors: false,
+                        callbacks: {
+                            label: (ctx) => {
+                                if (ctx.datasetIndex === 0) return `${ctx.parsed.y.toLocaleString()} cal`;
+                                return `Goal: ${ctx.parsed.y.toLocaleString()}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: 'hsl(220, 10%, 40%)',
+                            font: { family: 'Outfit', size: 10, weight: '600' },
+                            maxTicksLimit: 7,
+                            maxRotation: 0
+                        },
+                        grid: { display: false },
+                        border: { display: false }
+                    },
+                    y: {
+                        ticks: {
+                            color: 'hsl(220, 10%, 40%)',
+                            font: { family: 'Outfit', size: 10, weight: '600' },
+                            callback: (val) => val >= 1000 ? (val / 1000).toFixed(1) + 'k' : val,
+                            maxTicksLimit: 5
+                        },
+                        grid: {
+                            color: 'hsla(0, 0%, 100%, 0.04)',
+                            drawTicks: false
+                        },
+                        border: { display: false },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    },
+
+    renderMealBreakdown(history) {
+        const container = document.getElementById('meal-breakdown-bars');
+        if (!container) return;
+
+        const daysWithData = history.filter(h => h.calories > 0);
+        const count = daysWithData.length || 1;
+
+        const totals = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
+        daysWithData.forEach(h => {
+            if (h.meals) {
+                MEALS.forEach(m => { totals[m] += (h.meals[m] || 0); });
+            }
+        });
+
+        const averages = {};
+        MEALS.forEach(m => { averages[m] = Math.round(totals[m] / count); });
+        const maxAvg = Math.max(...Object.values(averages), 1);
+
+        const mealColors = {
+            breakfast: 'var(--breakfast)',
+            lunch: 'var(--lunch)',
+            dinner: 'var(--dinner)',
+            snacks: 'var(--snacks)'
+        };
+
+        const mealLabels = {
+            breakfast: 'Bfast',
+            lunch: 'Lunch',
+            dinner: 'Dinner',
+            snacks: 'Snacks'
+        };
+
+        container.innerHTML = MEALS.map(meal => {
+            const pct = Math.round((averages[meal] / maxAvg) * 100);
+            return `
+                <div class="meal-bar-row">
+                    <div class="meal-bar-label">
+                        <span class="meal-bar-dot" style="background:${mealColors[meal]};box-shadow:0 0 6px ${mealColors[meal]};"></span>
+                        ${mealLabels[meal]}
+                    </div>
+                    <div class="meal-bar-track">
+                        <div class="meal-bar-fill" style="width:${pct}%;background:${mealColors[meal]};box-shadow:0 0 8px ${mealColors[meal]}44;"></div>
+                    </div>
+                    <span class="meal-bar-value">${averages[meal].toLocaleString()}</span>
+                </div>
+            `;
+        }).join('');
+    },
+
+    renderStatsRecords(history) {
+        const goal = this.state.settings.dailyGoal;
+        const withData = history.filter(h => h.calories > 0);
+
+        const formatDate = (dateStr) => {
+            const d = new Date(dateStr + 'T12:00:00');
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        };
+
+        if (withData.length === 0) {
+            document.getElementById('stat-best-day').textContent = '—';
+            document.getElementById('stat-worst-day').textContent = '—';
+            document.getElementById('stat-under-goal').textContent = '—';
+            return;
+        }
+
+        const best = withData.reduce((a, b) => a.calories > b.calories ? a : b);
+        const worst = withData.reduce((a, b) => a.calories < b.calories ? a : b);
+        const underGoalCount = withData.filter(h => h.calories <= goal).length;
+        const underGoalPct = Math.round((underGoalCount / withData.length) * 100);
+
+        document.getElementById('stat-best-day').textContent = `${best.calories.toLocaleString()} cal · ${formatDate(best.date)}`;
+        document.getElementById('stat-worst-day').textContent = `${worst.calories.toLocaleString()} cal · ${formatDate(worst.date)}`;
+        document.getElementById('stat-under-goal').textContent = `${underGoalPct}% (${underGoalCount}/${withData.length} days)`;
+    },
+
+    setupRangeToggle() {
+        const buttons = document.querySelectorAll('.range-btn');
+        buttons.forEach(btn => {
+            // Remove old listeners by cloning
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+            
+            newBtn.addEventListener('click', () => {
+                document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                newBtn.classList.add('active');
+                
+                const range = newBtn.dataset.range;
+                this.statsRange = range === 'all' ? 'all' : parseInt(range);
+                const filtered = this.getFilteredHistory();
+                this.renderStatsChart(filtered);
+                this.renderMealBreakdown(filtered);
+            });
+        });
+    },
+
+    renderHistory() {
+        const list = document.getElementById('history-list');
+        const goal = this.state.settings.dailyGoal;
+
+        if (this.state.history.length === 0) {
+            list.innerHTML = '<div class="history-item"><span class="history-date">No history yet.</span></div>';
+            return;
+        }
+
+        // Group entries by month (YYYY-MM)
+        const monthGroups = new Map();
+        this.state.history.forEach(entry => {
+            const monthKey = entry.date.substring(0, 7); // "YYYY-MM"
+            if (!monthGroups.has(monthKey)) {
+                monthGroups.set(monthKey, []);
+            }
+            monthGroups.get(monthKey).push(entry);
+        });
+
+        // Current month key for deciding which is expanded
+        const currentMonthKey = this.getTodayDate().substring(0, 7);
+
+        list.innerHTML = '';
+
+        monthGroups.forEach((entries, monthKey) => {
+            const isCurrentMonth = (monthKey === currentMonthKey);
+
+            // Calculate month summary
+            const daysWithData = entries.filter(e => e.calories > 0);
+            const totalCals = daysWithData.reduce((sum, e) => sum + e.calories, 0);
+            const avgCals = daysWithData.length > 0 ? Math.round(totalCals / daysWithData.length) : 0;
+
+            // Month header label
+            const [year, month] = monthKey.split('-');
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            const monthLabel = monthDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+            // Create month group container
+            const group = document.createElement('div');
+            group.className = `history-month-group${isCurrentMonth ? ' expanded' : ''}`;
+
+            // Month header (clickable to expand/collapse)
+            const header = document.createElement('button');
+            header.className = 'history-month-header';
+            header.innerHTML = `
+                <div class="history-month-left">
+                    <i data-lucide="chevron-right" class="history-month-chevron"></i>
+                    <span class="history-month-label">${monthLabel}</span>
+                </div>
+                <div class="history-month-summary">
+                    <span class="history-month-days">${daysWithData.length} day${daysWithData.length !== 1 ? 's' : ''}</span>
+                    <span class="history-month-avg">avg ${avgCals.toLocaleString()}</span>
+                </div>
+            `;
+
+            // Day entries container
+            const body = document.createElement('div');
+            body.className = 'history-month-body';
+
+            entries.forEach(entry => {
+                const d = new Date(entry.date + 'T12:00:00');
+                const str = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                
+                const isOver = entry.calories > goal;
+                const badgeClass = isOver ? 'over' : 'under';
+                const badgeText = isOver ? `+${(entry.calories - goal).toLocaleString()}` : 'On track';
+                
+                // Build meal dots
+                let mealDotsHtml = '';
+                if (entry.meals) {
+                    const mealColors = {
+                        breakfast: 'var(--breakfast)',
+                        lunch: 'var(--lunch)',
+                        dinner: 'var(--dinner)',
+                        snacks: 'var(--snacks)'
+                    };
+                    mealDotsHtml = '<div class="history-meal-dots">';
+                    MEALS.forEach(meal => {
+                        if (entry.meals[meal] > 0) {
+                            mealDotsHtml += `<span class="history-meal-dot" style="background:${mealColors[meal]};"></span>`;
+                        }
+                    });
+                    mealDotsHtml += '</div>';
+                }
+                
+                const item = document.createElement('div');
+                item.className = 'history-item clickable';
+                item.innerHTML = `
+                    <div class="history-item-content">
+                        <span class="history-date">${str}</span>
+                        <div class="history-item-meta">
+                            ${mealDotsHtml}
+                            ${entry.calories > 0 ? `<span class="history-goal-badge ${badgeClass}">${badgeText}</span>` : ''}
+                        </div>
+                    </div>
+                    <span class="history-cals">${entry.calories.toLocaleString()} cal</span>
+                `;
+                item.addEventListener('click', () => {
+                    this.viewingDate = entry.date;
+                    if (this.fp) this.fp.setDate(this.viewingDate, false);
+                    this.loadDay(this.viewingDate);
+                    this.renderUI();
+                    document.getElementById('history-modal').classList.remove('active');
+                    if (this.user) this.startCloudSync();
+                });
+                body.appendChild(item);
+            });
+
+            // Toggle expand/collapse on header click
+            header.addEventListener('click', () => {
+                group.classList.toggle('expanded');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            });
+
+            group.appendChild(header);
+            group.appendChild(body);
+            list.appendChild(group);
+        });
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     // ── Render ─────────────────────────────────────────
     renderUI() {
+        this.updateDateDisplay();
         this.renderStats();
         this.renderProgressBar();
         this.renderGrid();
         this.renderHistory();
         this.syncMealButtons();
+    },
+
+    updateDateDisplay() {
+        const label = document.getElementById('current-date-label');
+        if (!label) return;
+
+        if (this.viewingDate === this.currentDate) {
+            label.textContent = 'Today';
+        } else {
+            const d = new Date(this.viewingDate + 'T12:00:00');
+            label.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+    },
+
+    changeDate(offset) {
+        const d = new Date(this.viewingDate + 'T12:00:00');
+        d.setDate(d.getDate() + offset);
+        const newDate = d.toISOString().split('T')[0];
+        
+        // Don't go into the future
+        if (newDate > this.currentDate) return;
+
+        this.viewingDate = newDate;
+        if (this.fp) {
+            this.fp.setDate(this.viewingDate, false);
+        }
+        this.loadDay(this.viewingDate);
+        this.renderUI();
+        
+        if (this.user) {
+            this.startCloudSync();
+        }
     },
 
     renderStats() {
@@ -543,23 +1204,8 @@ const BoxCal = {
         }
     },
 
-    renderHistory() {
-        const list = document.getElementById('history-list');
-
-        if (this.state.history.length === 0) {
-            list.innerHTML = '<div class="history-item"><span class="history-date">No history yet.</span></div>';
-            return;
-        }
-
-        list.innerHTML = this.state.history.map(entry => {
-            const d   = new Date(entry.date + 'T12:00:00');
-            const str = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-            return `<div class="history-item">
-                <span class="history-date">${str}</span>
-                <span class="history-cals">${entry.calories.toLocaleString()} cal</span>
-            </div>`;
-        }).join('');
-    },
+    // renderHistory is defined above in the stats panel section (line ~949)
+    // with rich formatting (meal dots, goal badges, click-to-navigate).
 
     syncMealButtons() {
         const active = this.state.currentDay.activeMeal;
@@ -596,6 +1242,8 @@ const BoxCal = {
             okBtn.removeEventListener('click', handleOk);
             cancelBtn.removeEventListener('click', handleCancel);
             closeBtn.removeEventListener('click', handleCancel);
+            // Reset long-press flag in case this was triggered by a long-press
+            this.isLongPress = false;
         };
         
         const handleOk = () => {
@@ -607,9 +1255,11 @@ const BoxCal = {
             cleanup();
         };
         
-        okBtn.onclick = handleOk;
-        cancelBtn.onclick = handleCancel;
-        closeBtn.onclick = handleCancel;
+        // Use addEventListener (not .onclick) so removeEventListener works correctly
+        // and old handlers don't stack up across multiple showConfirm calls
+        okBtn.addEventListener('click', handleOk);
+        cancelBtn.addEventListener('click', handleCancel);
+        closeBtn.addEventListener('click', handleCancel);
         
         modal.classList.add('active');
     },
@@ -647,6 +1297,52 @@ const BoxCal = {
 
     // ── Event Listeners ────────────────────────────────
     setupEventListeners() {
+        // Date navigation
+        document.getElementById('prev-day').addEventListener('click', () => this.changeDate(-1));
+        document.getElementById('next-day').addEventListener('click', () => this.changeDate(1));
+
+        // Date Picker (Flatpickr)
+        this.fp = flatpickr("#date-input", {
+            maxDate: "today",
+            disableMobile: "true",
+            appendTo: document.body, // Escape overflow:hidden containers so calendar isn't clipped
+            position: "auto",
+            static: false,
+            monthSelectorType: "static",
+            animate: true,
+            onChange: (selectedDates, dateStr) => {
+                if (dateStr && dateStr !== this.viewingDate) {
+                    this.viewingDate = dateStr;
+                    this.loadDay(this.viewingDate);
+                    this.renderUI();
+                    if (this.user) this.startCloudSync();
+                }
+            }
+        });
+
+        document.getElementById('date-picker-trigger').addEventListener('click', () => {
+            this.fp.open();
+        });
+
+        // Auto-detect day change
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                const today = this.getTodayDate();
+                if (today !== this.currentDate) {
+                    const wasOnToday = (this.viewingDate === this.currentDate);
+                    this.currentDate = today;
+                    if (wasOnToday) {
+                        this.viewingDate = today;
+                        this.loadDay(this.viewingDate);
+                        this.renderUI();
+                    }
+                }
+                
+                // Always check for cloud updates on focus
+                if (this.user) this.startCloudSync();
+            }
+        });
+
         // Sync button
         document.getElementById('sync-btn').addEventListener('click', () => this.handleSync());
 
@@ -678,10 +1374,14 @@ const BoxCal = {
         });
 
         const grid = document.getElementById('box-grid');
-        let pressTimer;
+        let pressTimer = null;
 
         const startPress = (e) => {
             if (!e.target.classList.contains('box')) return;
+            
+            // Prevent multiple timers if both touch and mouse events fire
+            if (pressTimer) clearTimeout(pressTimer);
+            
             this.isLongPress = false;
             pressTimer = setTimeout(() => {
                 this.isLongPress = true;
@@ -690,15 +1390,29 @@ const BoxCal = {
                     'Reset all boxes for today?',
                     () => this.resetDay()
                 );
+                pressTimer = null;
             }, 800);
         };
-        const endPress = () => clearTimeout(pressTimer);
+
+        const endPress = () => {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+        };
 
         grid.addEventListener('mousedown',  startPress);
         grid.addEventListener('touchstart', startPress, { passive: true });
         grid.addEventListener('mouseup',    endPress);
         grid.addEventListener('touchend',   endPress);
+        grid.addEventListener('touchcancel', endPress);
+        grid.addEventListener('touchmove',  endPress); // Clear timer if user scrolls
         grid.addEventListener('mouseleave', endPress);
+        
+        // Prevent context menu on boxes to allow for clean long-press
+        grid.addEventListener('contextmenu', e => {
+            if (e.target.classList.contains('box')) e.preventDefault();
+        });
 
         const modal      = document.getElementById('settings-modal');
         const goalInput  = document.getElementById('daily-goal');
@@ -769,8 +1483,22 @@ const BoxCal = {
             historyModal.classList.add('active');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
+        // History Modal close
         document.getElementById('close-history').addEventListener('click', () => historyModal.classList.remove('active'));
         historyModal.addEventListener('click', e => { if (e.target === historyModal) historyModal.classList.remove('active'); });
+
+        // Debug Modal
+        document.getElementById('debug-btn').addEventListener('click', () => this.handleDebugData());
+        document.getElementById('close-debug').addEventListener('click', () => document.getElementById('debug-modal').classList.remove('active'));
+        document.getElementById('debug-modal').addEventListener('click', e => { 
+            if (e.target === document.getElementById('debug-modal')) document.getElementById('debug-modal').classList.remove('active'); 
+        });
+        document.getElementById('copy-debug').addEventListener('click', () => {
+            this.copyToClipboard(document.getElementById('debug-output').textContent);
+        });
+
+        // Delete All Data button
+        document.getElementById('delete-all-btn').addEventListener('click', () => this.deleteAllData());
 
         // Close confirm modal on outside click
         const confirmModal = document.getElementById('confirm-modal');
