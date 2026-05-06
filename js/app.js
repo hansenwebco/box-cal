@@ -41,6 +41,10 @@ const NomBlox = {
     fp: null,
     historyDates: new Set(),
     authMode: 'login', // 'login', 'signup', or 'forgot'
+    _activeDayListenerDate: null, // tracks which date the day listener is subscribed to
+    _historyFetchedAt: null,      // timestamp of last Firestore history fetch
+    _lastSyncAt: null,            // timestamp of last startCloudSync (for visibility throttle)
+    _lastSavedSettings: null,     // JSON string of settings last written to Firestore
 
     // ── Init ───────────────────────────────────────────
     init() {
@@ -90,15 +94,13 @@ const NomBlox = {
                 document.getElementById('auth-modal').classList.remove('active');
             } else {
                 console.log("Auth state changed: User logged out");
-                // Fix: Properly unsubscribe from day and settings listeners
-                if (this.unsubscribeDay) {
-                    this.unsubscribeDay();
-                    this.unsubscribeDay = null;
-                }
-                if (this.unsubscribeSettings) {
-                    this.unsubscribeSettings();
-                    this.unsubscribeSettings = null;
-                }
+                // Unsubscribe all listeners and reset tracking state on logout
+                if (this.unsubscribeDay) { this.unsubscribeDay(); this.unsubscribeDay = null; }
+                if (this.unsubscribeSettings) { this.unsubscribeSettings(); this.unsubscribeSettings = null; }
+                this._activeDayListenerDate = null;
+                this._historyFetchedAt = null;
+                this._lastSavedSettings = null;
+                this._lastSyncAt = null;
                 // Clear local data on logout to ensure no data leaks between accounts
                 this.clearLocalData();
                 this.renderUI();
@@ -163,7 +165,13 @@ const NomBlox = {
         // Always force currentDay.date to match before saving, preventing ghost documents.
         const saveDate = this.viewingDate;
         this.state.currentDay.date = saveDate;
-        this.state.currentDay.lastUpdated = this.state.lastUpdated; // Embed in day object
+        // Only stamp the day's own timestamp when this is a NEW local change.
+        // When skipTimestamp=true (sync-triggered saves), we must NOT overwrite the day's
+        // timestamp or it poisons the day listener's cloudData > localDay comparison,
+        // causing remote day updates to be silently ignored ("leapfrog bug").
+        if (!skipTimestamp) {
+            this.state.currentDay.lastUpdated = this.state.lastUpdated;
+        }
         
         const dayKey = `nomblox-day-${saveDate}`;
         localStorage.setItem(dayKey, JSON.stringify(this.state.currentDay));
@@ -221,13 +229,19 @@ const NomBlox = {
             }
 
             try {
-                // Save settings to user doc
-                await setDoc(doc(db, "users", this.user.uid), { 
-                    settings: this.state.settings,
-                    lastUpdated: this.state.lastUpdated 
+                // Always write lastUpdated to the user doc so other devices'
+                // settings listeners have a current timestamp to compare against.
+                // Only include the settings payload when it actually changed.
+                const settingsJson = JSON.stringify(this.state.settings);
+                const settingsChanged = settingsJson !== this._lastSavedSettings;
+                if (settingsChanged) this._lastSavedSettings = settingsJson;
+
+                await setDoc(doc(db, "users", this.user.uid), {
+                    ...(settingsChanged ? { settings: this.state.settings } : {}),
+                    lastUpdated: this.state.lastUpdated
                 }, { merge: true });
 
-                // Save day to sub-collection using the snapshotted date
+                // Always save the current day doc
                 const dayRef = doc(db, "users", this.user.uid, "days", saveDate);
                 await setDoc(dayRef, {
                     ...this.state.currentDay,
@@ -240,13 +254,14 @@ const NomBlox = {
         }
     },
 
-    async startCloudSync() {
-        const userRef = doc(db, "users", this.user.uid);
-        const dayRef = doc(db, "users", this.user.uid, "days", this.viewingDate);
-        
-        // Remove redundant getDoc calls. onSnapshot provides the initial state immediately.
-        // We only need to check for a remote wipe once or via the settings listener.
-        this.setupSyncListeners(userRef, dayRef);
+    startCloudSync() {
+        // Fix #1: Settings listener is created once at login and never torn down until logout.
+        // Re-creating it on every date navigation was billing a read on every subscription.
+        if (!this.unsubscribeSettings) {
+            this.setupSettingsListener();
+        }
+        // Day listener is only recreated when the viewed date actually changes.
+        this.startDaySync(this.viewingDate);
         this.isLoggingIn = false;
     },
 
@@ -275,26 +290,25 @@ const NomBlox = {
         return false;
     },
 
-    setupSyncListeners(userRef, dayRef) {
+    // Fix #1: Replaced setupSyncListeners with two dedicated methods.
+    // startDaySync: recreated only when the viewed date changes.
+    // setupSettingsListener: created once at login, never torn down until logout.
+
+    startDaySync(date) {
+        // No-op if already subscribed to this exact date — avoids a billed read
+        if (this._activeDayListenerDate === date) return;
+
         if (this.unsubscribeDay) this.unsubscribeDay();
-        if (this.unsubscribeSettings) this.unsubscribeSettings();
+        this._activeDayListenerDate = date;
 
-        // Capture the date this listener was set up for so we can detect stale callbacks
-        const listenerDate = this.viewingDate;
+        const dayRef = doc(db, "users", this.user.uid, "days", date);
+        const listenerDate = date;
+        console.log(`Setting up day listener for: ${listenerDate}`);
 
-        console.log(`Setting up sync listeners for date: ${listenerDate}`);
-
-        // 1. Day Listener
         this.unsubscribeDay = onSnapshot(dayRef, (snap) => {
-            // REMOVED: global isSyncing check here as it can cause race conditions 
-            // between different listeners (e.g. settings update blocking day update).
-            // We rely on snap.metadata.hasPendingWrites to ignore our own echoes.
-
-            // Ignore if this is a local change that hasn't been confirmed by the server yet
             if (snap.metadata.hasPendingWrites) return;
 
-            // CRITICAL: If the user has navigated away from the date this listener
-            // was created for, ignore the callback to prevent cross-date overwrites.
+            // If the user has navigated away, ignore to prevent cross-date overwrites
             if (this.viewingDate !== listenerDate) {
                 console.log(`Ignoring stale day snapshot for ${listenerDate} (now viewing ${this.viewingDate})`);
                 return;
@@ -306,8 +320,6 @@ const NomBlox = {
                 const localDayRaw = localStorage.getItem(localKey);
                 const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
 
-                // Robust comparison: Update if local is missing or timestamps are different.
-                // Using !== instead of > handles clock skew between different devices.
                 if (!localDay || (cloudData.lastUpdated || 0) > (localDay.lastUpdated || 0)) {
                     console.log(`Remote day update received for ${listenerDate}`);
                     this.isSyncing = true;
@@ -321,19 +333,16 @@ const NomBlox = {
                         this.isSyncing = false;
                     }
                 } else if (localDay && (localDay.lastUpdated || 0) > (cloudData.lastUpdated || 0)) {
-                    // Push local to cloud if local is newer (initial sync case)
                     console.log(`Local day is newer for ${listenerDate} — pushing to cloud.`);
                     setDoc(dayRef, { ...localDay, date: listenerDate });
                 }
             } else {
-                // Cloud doesn't have this day yet. 
                 const localKey = `nomblox-day-${listenerDate}`;
                 const localDayRaw = localStorage.getItem(localKey);
                 if (localDayRaw) {
                     try {
                         const localDay = JSON.parse(localDayRaw);
                         const lastWipe = parseInt(localStorage.getItem('nomblox-wiped-at') || '0', 10);
-                        // Only push if it's not stale relative to the last wipe
                         if ((localDay.lastUpdated || 0) > lastWipe) {
                             console.log(`Cloud missing day ${listenerDate} — pushing local data.`);
                             setDoc(dayRef, { ...localDay, date: listenerDate });
@@ -344,12 +353,14 @@ const NomBlox = {
         }, (error) => {
             console.error(`Day listener error for ${listenerDate}:`, error);
         });
+    },
 
-        // 2. Settings Listener
+    setupSettingsListener() {
+        const userRef = doc(db, "users", this.user.uid);
+        console.log('Setting up settings listener (one-time until logout)');
+
         this.unsubscribeSettings = onSnapshot(userRef, (snap) => {
-            // REMOVED: global isSyncing check here to prevent race conditions.
             if (snap.metadata.hasPendingWrites) return;
-
             if (!snap.exists()) return;
             const cloudData = snap.data();
 
@@ -363,6 +374,8 @@ const NomBlox = {
                 try {
                     this.state.settings = { ...this.state.settings, ...cloudData.settings };
                     this.state.lastUpdated = cloudData.lastUpdated;
+                    // Keep the settings write-dedup cache in sync with what's on the server
+                    this._lastSavedSettings = JSON.stringify(this.state.settings);
                     this.saveLocalState(true);
                     this.renderUI();
                 } catch (e) {
@@ -425,7 +438,7 @@ const NomBlox = {
                 await this.saveState();
             }
             this.renderUI();
-            this.setupRealtimeSync(doc(db, "users", this.user.uid));
+            this.startCloudSync(); // Fix #5: was calling removed setupRealtimeSync
         };
         
         const handleLogout = async () => {
@@ -648,6 +661,9 @@ const NomBlox = {
             lastUpdated: 0
         };
         this.historyDates = new Set();
+        // Reset fetch-tracking state so the next login starts fresh
+        this._historyFetchedAt = null;
+        this._lastSavedSettings = null;
     },
 
     getTodayDate() {
@@ -817,12 +833,11 @@ const NomBlox = {
                         const daysRef = collection(db, "users", this.user.uid, "days");
                         const daysSnap = await getDocs(daysRef);
                         
-                        // Delete all documents in the days sub-collection
-                        const deletePromises = [];
-                        daysSnap.forEach((doc) => {
-                            deletePromises.push(deleteDoc(doc.ref));
-                        });
-                        await Promise.all(deletePromises);
+                        // Fix #6: Delete in chunks of 500 to respect Firestore limits
+                        const allDocs = daysSnap.docs;
+                        for (let i = 0; i < allDocs.length; i += 500) {
+                            await Promise.all(allDocs.slice(i, i + 500).map(d => deleteDoc(d.ref)));
+                        }
                     } catch (e) {
                         console.error("Error wiping cloud days:", e);
                         alert("Failed to wipe some cloud data. Check console.");
@@ -863,14 +878,25 @@ const NomBlox = {
             return;
         }
 
-        // Optimization: If we already have history and not forcing, skip
-        if (this.state.history.length > 0 && !force) {
+        // Fix #2: Use a 60-second TTL so the stats modal serves from the local
+        // state.history cache instead of querying Firestore on every open.
+        // state.history is kept up-to-date by updateHistoryEntry() on every box click.
+        const STALE_MS = 60_000;
+        const isFresh = this._historyFetchedAt && (Date.now() - this._historyFetchedAt < STALE_MS);
+        if (!force && isFresh && this.state.history.length > 0) {
             this.renderStatsPanel();
             return;
         }
 
+        // Render immediately with cached data while the cloud fetch runs in the background
+        if (this.state.history.length > 0) {
+            this.renderStatsPanel();
+        }
+
         try {
             const daysRef = collection(db, "users", this.user.uid, "days");
+            // Fix #7: limit(500) is a documented safety cap.
+            // Users with more than 500 tracked days will see their most recent 500.
             const q = query(daysRef, orderBy("date", "desc"), limit(500));
             const querySnapshot = await getDocs(q);
             
@@ -914,6 +940,7 @@ const NomBlox = {
             this.state.history = history;
             this.updateHistoryDates();
             this.saveLocalState(true);
+            this._historyFetchedAt = Date.now(); // Mark cache as fresh
             
             this.renderStatsPanel();
         } catch (e) {
@@ -1610,8 +1637,13 @@ const NomBlox = {
                     }
                 }
                 
-                // Always check for cloud updates on focus
-                if (this.user) this.startCloudSync();
+                // Fix #3: Throttle to at most once every 5 seconds to prevent
+                // listener churn when the user alt-tabs or switches apps rapidly.
+                const MIN_RESYNC_MS = 5_000;
+                if (this.user && (!this._lastSyncAt || Date.now() - this._lastSyncAt > MIN_RESYNC_MS)) {
+                    this._lastSyncAt = Date.now();
+                    this.startCloudSync();
+                }
             }
         });
 
@@ -1755,7 +1787,9 @@ const NomBlox = {
 
         const historyModal = document.getElementById('history-modal');
         document.getElementById('history-btn').addEventListener('click', () => {
-            this.fetchHistory(true); // Force fresh history when opening stats
+            // Fix #2: No longer force-fetching. Uses 60s TTL cache — state.history
+            // is kept current by updateHistoryEntry() on every box click.
+            this.fetchHistory();
             historyModal.classList.add('active');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
