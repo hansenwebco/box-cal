@@ -207,11 +207,25 @@
                         <!-- Populated by JS -->
                     </div>
                     <div class="debug-section">
-                        <span class="debug-label">Debug Options</span>
+                        <span class="debug-label">Data Management</span>
+                        <div class="debug-group">
+                            <button id="backup-btn" class="btn-debug">
+                                <i data-lucide="download"></i>
+                                Backup Data
+                            </button>
+                            <button id="restore-btn" class="btn-debug">
+                                <i data-lucide="upload"></i>
+                                Restore Data
+                            </button>
+                            <input type="file" id="restore-input" style="display: none;" accept=".json">
+                        </div>
+                    </div>
+                    <div class="debug-section">
+                        <span class="debug-label">Cloud Debug</span>
                         <div class="debug-group">
                             <button id="debug-btn" class="btn-debug">
                                 <i data-lucide="database"></i>
-                                Cloud Data
+                                Server JSON
                             </button>
                             <button id="delete-all-btn" class="btn-debug danger">
                                 <i data-lucide="trash-2"></i>
