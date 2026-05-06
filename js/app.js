@@ -222,7 +222,7 @@ const BoxCal = {
                 const localDayRaw = localStorage.getItem(localKey);
                 const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
 
-                if (!localDay || cloudDay.lastUpdated !== (localDay.lastUpdated || 0)) {
+                if (!localDay || (cloudDay.lastUpdated || 0) > (localDay.lastUpdated || 0)) {
                     console.log(`Initial cloud sync: applying remote data for ${syncDate}`);
                     this.isSyncing = true;
                     try {
@@ -326,7 +326,7 @@ const BoxCal = {
 
                 // Robust comparison: Update if local is missing or timestamps are different.
                 // Using !== instead of > handles clock skew between different devices.
-                if (!localDay || cloudData.lastUpdated !== (localDay.lastUpdated || 0)) {
+                if (!localDay || (cloudData.lastUpdated || 0) > (localDay.lastUpdated || 0)) {
                     console.log(`Remote day update received for ${listenerDate}`);
                     this.isSyncing = true;
                     try {
@@ -368,7 +368,7 @@ const BoxCal = {
             if (cloudData.wipedAt && this.handleRemoteWipe(cloudData.wipedAt)) return;
             // ──────────────────────────────────────────────────────────────
 
-            if (cloudData.settings && cloudData.lastUpdated !== (this.state.lastUpdated || 0)) {
+            if (cloudData.settings && (cloudData.lastUpdated || 0) > (this.state.lastUpdated || 0)) {
                 console.log("Remote settings update received");
                 this.isSyncing = true;
                 try {
@@ -585,6 +585,106 @@ const BoxCal = {
         } catch (e) {
             output.textContent = "Error fetching data: " + e.message;
         }
+    },
+
+    backupData() {
+        const backup = {
+            version: STATE_VERSION,
+            timestamp: Date.now(),
+            data: {}
+        };
+
+        // Collect all box-cal items from localStorage
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith('box-cal-')) {
+                backup.data[key] = localStorage.getItem(key);
+            }
+        }
+
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const date = new Date().toISOString().split('T')[0];
+        
+        a.href = url;
+        a.download = `box-cal-backup-${date}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+
+    restoreData() {
+        const input = document.getElementById('restore-input');
+        input.click();
+    },
+
+    handleRestoreFile(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const backup = JSON.parse(event.target.result);
+                
+                // Basic validation
+                if (!backup.data || typeof backup.data !== 'object') {
+                    throw new Error("Invalid backup format: Missing data object.");
+                }
+
+                this.showConfirm(
+                    'Restore Data',
+                    'This will OVERWRITE all your current local data with the data from this backup. Are you sure?',
+                    async () => {
+                        // Clear current box-cal keys
+                        const keysToRemove = [];
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const key = localStorage.key(i);
+                            if (key.startsWith('box-cal-')) {
+                                keysToRemove.push(key);
+                            }
+                        }
+                        keysToRemove.forEach(k => localStorage.removeItem(k));
+
+                        // Restore from backup and update timestamps to ensure it's seen as "newest"
+                        const newSyncTime = Date.now();
+                        for (let [key, value] of Object.entries(backup.data)) {
+                            // Skip the old wiped-at and last-updated keys from the backup, 
+                            // we will set them to the current time.
+                            if (key === 'box-cal-wiped-at' || key === 'box-cal-last-updated') continue;
+
+                            // Update timestamps for each day record
+                            if (key.startsWith('box-cal-day-')) {
+                                try {
+                                    const dayObj = JSON.parse(value);
+                                    dayObj.lastUpdated = newSyncTime;
+                                    value = JSON.stringify(dayObj);
+                                } catch(e) {
+                                    console.warn("Failed to update timestamp for day key:", key);
+                                }
+                            }
+                            localStorage.setItem(key, value);
+                        }
+
+                        // Force global timestamps to current time
+                        // We set wiped-at slightly BEFORE the current time to ensure 
+                        // day.lastUpdated (newSyncTime) is strictly greater than wiped-at.
+                        localStorage.setItem('box-cal-last-updated', newSyncTime);
+                        localStorage.setItem('box-cal-wiped-at', newSyncTime - 1000);
+
+                        location.reload();
+                    }
+                );
+            } catch (err) {
+                console.error("Restore failed:", err);
+                alert("Failed to restore: " + err.message);
+            }
+            // Reset input so the same file can be selected again
+            e.target.value = '';
+        };
+        reader.readAsText(file);
     },
 
     async deleteAllData() {
@@ -1544,6 +1644,11 @@ const BoxCal = {
         document.getElementById('copy-debug').addEventListener('click', () => {
             this.copyToClipboard(document.getElementById('debug-output').textContent);
         });
+
+        // Backup & Restore
+        document.getElementById('backup-btn').addEventListener('click', () => this.backupData());
+        document.getElementById('restore-btn').addEventListener('click', () => this.restoreData());
+        document.getElementById('restore-input').addEventListener('change', (e) => this.handleRestoreFile(e));
 
         // Delete All Data button
         document.getElementById('delete-all-btn').addEventListener('click', () => this.deleteAllData());
