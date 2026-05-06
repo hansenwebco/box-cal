@@ -6,7 +6,7 @@
 import { 
     db, auth, providers, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword,
     onAuthStateChanged, signOut, doc, getDoc, setDoc, onSnapshot, deleteDoc,
-    collection, query, orderBy, limit, getDocs 
+    collection, query, orderBy, limit, getDocs, sendPasswordResetEmail 
 } from './firebase.js';
 
 const STATE_VERSION = 3; // bump when schema changes
@@ -40,6 +40,7 @@ const NomBlox = {
     unsubscribeSettings: null,
     fp: null,
     historyDates: new Set(),
+    authMode: 'login', // 'login', 'signup', or 'forgot'
 
     // ── Init ───────────────────────────────────────────
     init() {
@@ -97,6 +98,9 @@ const NomBlox = {
                     this.unsubscribeSettings();
                     this.unsubscribeSettings = null;
                 }
+                // Clear local data on logout to ensure no data leaks between accounts
+                this.clearLocalData();
+                this.renderUI();
             }
         });
     },
@@ -466,6 +470,7 @@ const NomBlox = {
         
         const handleLogout = async () => {
             modal.classList.remove('active');
+            this.clearLocalData();
             await signOut(auth);
             location.reload();
         };
@@ -484,12 +489,18 @@ const NomBlox = {
                 "Logout", 
                 `Logged in as ${email}\n\nDo you want to log out?`,
                 async () => {
+                    this.clearLocalData();
                     await signOut(auth);
                     location.reload();
                 }
             );
         } else {
             this.showAuthError(''); // Clear previous errors
+            this.authMode = 'login';
+            this.updateAuthUI();
+            document.getElementById('auth-email').value = '';
+            document.getElementById('auth-password').value = '';
+            document.getElementById('auth-confirm-password').value = '';
             document.getElementById('auth-modal').classList.add('active');
         }
     },
@@ -506,12 +517,21 @@ const NomBlox = {
         }
     },
 
-    async handleEmailLogin(isSignup) {
+    async handleEmailLogin() {
+        if (this.authMode === 'forgot') {
+            await this.handleForgotPassword();
+            return;
+        }
+
+        const isSignup = this.authMode === 'signup';
         this.isLoggingIn = true;
         const email = document.getElementById('auth-email').value;
         const pass  = document.getElementById('auth-password').value;
+        const confirmPass = document.getElementById('auth-confirm-password').value;
 
         if (!email || !pass) { this.showAuthError('Please enter email and password.'); return; }
+        if (isSignup && !confirmPass) { this.showAuthError('Please confirm your password.'); return; }
+        if (isSignup && pass !== confirmPass) { this.showAuthError('Passwords do not match.'); return; }
         if (pass.length < 6) { this.showAuthError('Password must be at least 6 characters.'); return; }
 
         this.showAuthError('');
@@ -532,22 +552,104 @@ const NomBlox = {
         }
     },
 
+    async handleForgotPassword() {
+        const email = document.getElementById('auth-email').value;
+        if (!email) {
+            this.showAuthError('Please enter your email address first.');
+            return;
+        }
+
+        try {
+            await sendPasswordResetEmail(auth, email);
+            this.showAuthError('Password reset email sent! Check your inbox.');
+        } catch (e) {
+            console.error("Reset failed:", e);
+            let msg = e.message;
+            if (e.code === 'auth/user-not-found') msg = "No account found with this email.";
+            this.showAuthError(msg);
+        }
+    },
+
+    toggleAuthMode() {
+        if (this.authMode === 'forgot') {
+            this.authMode = 'login';
+        } else {
+            this.authMode = this.authMode === 'login' ? 'signup' : 'login';
+        }
+        this.updateAuthUI();
+    },
+
+    updateAuthUI() {
+        const isSignup = this.authMode === 'signup';
+        const isForgot = this.authMode === 'forgot';
+        
+        const submitBtn = document.getElementById('auth-submit-btn');
+        const toggleBtn = document.getElementById('auth-toggle-btn');
+        const toggleText = document.getElementById('auth-toggle-text');
+        const confirmGroup = document.getElementById('confirm-password-group');
+        const forgotPasswordContainer = document.getElementById('forgot-password-container');
+        const passwordInput = document.getElementById('auth-password');
+        const passwordGroup = passwordInput ? passwordInput.closest('.form-group') : null;
+        const googleBtn = document.getElementById('login-google');
+        const authDivider = document.getElementById('auth-divider');
+
+        if (isForgot) {
+            if (submitBtn) submitBtn.textContent = 'Send Reset Link';
+            if (toggleBtn) toggleBtn.textContent = 'Back to Login';
+            if (toggleText) toggleText.textContent = '';
+            if (passwordGroup) passwordGroup.style.display = 'none';
+            if (confirmGroup) confirmGroup.style.display = 'none';
+            if (forgotPasswordContainer) forgotPasswordContainer.style.display = 'none';
+            if (googleBtn) googleBtn.style.display = 'none';
+            if (authDivider) authDivider.style.display = 'none';
+        } else {
+            if (passwordGroup) passwordGroup.style.display = 'block';
+            if (googleBtn) googleBtn.style.display = 'flex';
+            if (authDivider) authDivider.style.display = 'flex';
+            if (submitBtn) submitBtn.textContent = isSignup ? 'Create Account' : 'Login';
+            if (toggleBtn) toggleBtn.textContent = isSignup ? 'Login' : 'Sign Up';
+            if (toggleText) toggleText.textContent = isSignup ? 'Already have an account?' : "Don't have an account?";
+            
+            if (confirmGroup) {
+                confirmGroup.style.display = isSignup ? 'block' : 'none';
+            }
+
+            if (forgotPasswordContainer) {
+                forgotPasswordContainer.style.display = isSignup ? 'none' : 'block';
+            }
+        }
+        
+        this.showAuthError(''); // Clear errors when switching
+    },
+
     updateSyncUI() {
         const btn = document.getElementById('sync-btn');
         const settingsUserInfo = document.getElementById('settings-user-info');
         const footerUserInfo = document.getElementById('footer-user-info');
         if (!btn) return;
 
-        const icon = btn.querySelector('[data-lucide]');
-        if (!icon) return;
+        // Clear existing icon or image
+        btn.innerHTML = '';
 
         if (this.user) {
             btn.classList.add('active');
-            icon.setAttribute('data-lucide', 'cloud-check');
-            btn.setAttribute('aria-label', `Synced as ${this.user.email}`);
+            btn.setAttribute('aria-label', `Logged in as ${this.user.email}`);
+            
+            if (this.user.photoURL) {
+                const img = document.createElement('img');
+                img.src = this.user.photoURL;
+                img.className = 'user-avatar';
+                img.alt = 'User Avatar';
+                btn.appendChild(img);
+            } else {
+                const icon = document.createElement('i');
+                icon.setAttribute('data-lucide', 'user');
+                btn.appendChild(icon);
+            }
             
             if (settingsUserInfo) {
-                settingsUserInfo.innerHTML = `<i data-lucide="user"></i><span>${this.user.email}</span>`;
+                const email = this.user.email || 'Cloud User';
+                settingsUserInfo.innerHTML = `<i data-lucide="user"></i><span>${email}</span>`;
                 settingsUserInfo.style.display = 'flex';
             }
             if (footerUserInfo) {
@@ -555,8 +657,10 @@ const NomBlox = {
             }
         } else {
             btn.classList.remove('active');
-            icon.setAttribute('data-lucide', 'cloud-off');
-            btn.setAttribute('aria-label', 'Sync to Cloud');
+            const icon = document.createElement('i');
+            icon.setAttribute('data-lucide', 'user'); // Changed from cloud-off to user
+            btn.appendChild(icon);
+            btn.setAttribute('aria-label', 'Login / Sync');
             
             if (settingsUserInfo) {
                 settingsUserInfo.style.display = 'none';
@@ -567,6 +671,23 @@ const NomBlox = {
         }
         
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    clearLocalData() {
+        console.log("Clearing all local data...");
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('nomblox-')) {
+                localStorage.removeItem(key);
+            }
+        });
+        // Reset in-memory state to defaults
+        this.state = {
+            settings: { dailyGoal: 2000, increment: 50 },
+            currentDay: { date: this.getTodayDate(), filledBoxes: {}, activeMeal: 'breakfast' },
+            history: [],
+            lastUpdated: 0
+        };
+        this.historyDates = new Set();
     },
 
     getTodayDate() {
@@ -1546,8 +1667,12 @@ const NomBlox = {
                 }
             });
         });
-        document.getElementById('login-email').addEventListener('click', () => this.handleEmailLogin(false));
-        document.getElementById('signup-email').addEventListener('click', () => this.handleEmailLogin(true));
+        document.getElementById('auth-submit-btn').addEventListener('click', () => this.handleEmailLogin());
+        document.getElementById('auth-toggle-btn').addEventListener('click', () => this.toggleAuthMode());
+        document.getElementById('forgot-password-btn').addEventListener('click', () => {
+            this.authMode = 'forgot';
+            this.updateAuthUI();
+        });
 
         // Meal selector
         document.querySelectorAll('.meal-btn').forEach(btn => {
