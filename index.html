@@ -17,7 +17,14 @@
     <div class="app-container">
         <header>
             <div class="header-content">
-                <h1>Box-Cal</h1>
+                <div class="header-left">
+                    <h1>Box-Cal</h1>
+                    <div id="date-display" class="date-display">
+                        <button id="prev-day" aria-label="Previous Day"><i data-lucide="chevron-left"></i></button>
+                        <span id="current-date-label">Today</span>
+                        <button id="next-day" aria-label="Next Day"><i data-lucide="chevron-right"></i></button>
+                    </div>
+                </div>
                 <div class="header-actions">
                     <button id="sync-btn" class="sync-btn" aria-label="Sync to Cloud">
                         <i data-lucide="cloud-off"></i>
@@ -114,6 +121,10 @@
                     <div id="settings-user-info" class="settings-user-info">
                         <!-- Populated by JS -->
                     </div>
+                    <button id="debug-btn" class="btn btn-secondary" style="margin-top: 8px; width: 100%; border: 1px dashed var(--glass-border); background: transparent;">
+                        <i data-lucide="database" style="width: 14px; height: 14px; margin-right: 8px;"></i>
+                        Debug Server Data
+                    </button>
                     <div class="form-actions">
                         <button id="reset-day-btn" class="btn btn-secondary">Reset Today</button>
                         <button id="save-settings" class="btn btn-primary">Save Changes</button>
@@ -164,6 +175,23 @@
                 <div class="form-actions confirm-actions" style="margin-top: 24px;">
                     <button id="confirm-cancel" class="btn btn-secondary">Cancel</button>
                     <button id="confirm-ok" class="btn btn-primary">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Debug Modal -->
+        <div id="debug-modal" class="modal">
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h2>Server Data Debug</h2>
+                    <button id="close-debug" class="icon-btn"><i data-lucide="x"></i></button>
+                </div>
+                <div class="debug-body">
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">This is the raw data stored in your cloud account.</p>
+                    <pre id="debug-output" class="debug-output"></pre>
+                </div>
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button id="copy-debug" class="btn btn-secondary">Copy JSON</button>
                 </div>
             </div>
         </div>

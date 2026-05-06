@@ -62,6 +62,12 @@ header { margin-top: 8px; }
     align-items: center;
 }
 
+.header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
 h1 {
     font-size: 2rem;
     font-weight: 800;
@@ -69,6 +75,45 @@ h1 {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     letter-spacing: -0.5px;
+    line-height: 1.1;
+}
+
+.date-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 2px;
+}
+
+#current-date-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#prev-day, #next-day {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: var(--transition);
+}
+
+#prev-day:hover, #next-day:hover {
+    color: var(--text-main);
+    background: var(--surface-light);
+}
+
+#prev-day i, #next-day i {
+    width: 16px;
+    height: 16px;
 }
 
 #settings-btn,
@@ -403,6 +448,24 @@ h1 {
 }
 .history-item:last-child { border-bottom: none; }
 .history-date { color: var(--text-muted); font-size: 0.9rem; }
+.debug-output {
+    background: #000;
+    color: #4ade80;
+    padding: 16px;
+    border-radius: var(--radius-sm);
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85rem;
+    max-height: 400px;
+    overflow: auto;
+    border: 1px solid var(--glass-border);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.history-item.clickable { cursor: pointer; transition: var(--transition); }
+.history-item.clickable:hover { background: var(--surface-light); padding-left: 12px; padding-right: 12px; border-radius: var(--radius-sm); }
+.history-item.clickable:active { transform: scale(0.98); }
+
 .history-cals { font-weight: 700; }
 
 /* ── Modal ──────────────────────────────────────── */

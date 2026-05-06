@@ -22,7 +22,6 @@ const BoxCal = {
         },
         currentDay: {
             date: '',
-            // filledBoxes: { [index]: mealType }
             filledBoxes: {},
             activeMeal: 'breakfast'
         },
@@ -30,16 +29,22 @@ const BoxCal = {
         lastUpdated: 0
     },
 
+    currentDate: '', // The date currently being viewed
+    viewingDate: '', // Format: YYYY-MM-DD
+
     user: null,
     isSyncing: false,
     isLoggingIn: false,
     isLongPress: false,
-    unsubscribeSnapshot: null,
+    unsubscribeDay: null,
+    unsubscribeSettings: null,
 
     // ── Init ───────────────────────────────────────────
     init() {
+        this.currentDate = this.getTodayDate();
+        this.viewingDate = this.currentDate;
+        
         this.loadLocalState();
-        this.checkDailyReset();
         this.renderUI();
         this.setupEventListeners();
         this.setupAuthListener();
@@ -64,55 +69,63 @@ const BoxCal = {
 
     // ── Persistence ────────────────────────────────────
     loadLocalState() {
-        const DEFAULT = {
-            version: STATE_VERSION,
-            settings: { dailyGoal: 2000, increment: 50 },
-            currentDay: { date: this.getTodayDate(), filledBoxes: {}, activeMeal: 'breakfast' },
-            history: [],
-            lastUpdated: 0
-        };
-
-        try {
-            const raw = localStorage.getItem('box-cal-state');
-            if (!raw) { this.state = DEFAULT; this.saveLocalState(); return; }
-
-            const parsed = JSON.parse(raw);
-
-            if (!parsed.version || parsed.version < STATE_VERSION) {
-                DEFAULT.history = Array.isArray(parsed.history) ? parsed.history : [];
-                this.state = DEFAULT;
-                this.saveLocalState();
-                return;
-            }
-
-            this.state = {
-                version: STATE_VERSION,
-                settings: { ...DEFAULT.settings, ...(parsed.settings || {}) },
-                currentDay: { ...DEFAULT.currentDay, ...(parsed.currentDay || {}) },
-                history: parsed.history || [],
-                lastUpdated: parsed.lastUpdated || 0
-            };
-
-            if (this.state.settings.increment < 50) this.state.settings.increment = 50;
-
-            if (typeof this.state.currentDay.filledBoxes !== 'object' || Array.isArray(this.state.currentDay.filledBoxes)) {
-                this.state.currentDay.filledBoxes = {};
-            }
-            if (!MEALS.includes(this.state.currentDay.activeMeal)) {
-                this.state.currentDay.activeMeal = 'breakfast';
-            }
-
-        } catch (e) {
-            console.error('Box-Cal: could not load local state.', e);
-            this.state = DEFAULT;
+        // 1. Load Settings
+        const savedSettings = localStorage.getItem('box-cal-settings');
+        if (savedSettings) {
+            try {
+                this.state.settings = JSON.parse(savedSettings);
+            } catch (e) { console.error("Error loading settings", e); }
         }
+
+        // 2. Load History
+        const savedHistory = localStorage.getItem('box-cal-history');
+        if (savedHistory) {
+            try {
+                this.state.history = JSON.parse(savedHistory);
+            } catch (e) { console.error("Error loading history", e); }
+        }
+
+        // 3. Load Current Viewing Day
+        this.loadDay(this.viewingDate);
+    },
+
+    loadDay(date) {
+        const key = `box-cal-day-${date}`;
+        const savedDay = localStorage.getItem(key);
+        
+        if (savedDay) {
+            try {
+                this.state.currentDay = JSON.parse(savedDay);
+            } catch (e) {
+                console.error("Error loading day data", e);
+                this.state.currentDay = { date: date, filledBoxes: {}, activeMeal: 'breakfast' };
+            }
+        } else {
+            this.state.currentDay = { date: date, filledBoxes: {}, activeMeal: 'breakfast' };
+        }
+        
+        // Ensure some sanity
+        if (!this.state.currentDay.filledBoxes) this.state.currentDay.filledBoxes = {};
+        if (!this.state.currentDay.activeMeal) this.state.currentDay.activeMeal = 'breakfast';
     },
 
     saveLocalState(skipTimestamp = false) {
         if (!skipTimestamp) {
             this.state.lastUpdated = Date.now();
         }
-        localStorage.setItem('box-cal-state', JSON.stringify(this.state));
+        
+        // Save settings
+        localStorage.setItem('box-cal-settings', JSON.stringify(this.state.settings));
+        
+        // Save current viewing day
+        const dayKey = `box-cal-day-${this.state.currentDay.date}`;
+        localStorage.setItem(dayKey, JSON.stringify(this.state.currentDay));
+        
+        // Save history (cache)
+        localStorage.setItem('box-cal-history', JSON.stringify(this.state.history));
+        
+        // Legacy support / overall metadata
+        localStorage.setItem('box-cal-last-updated', this.state.lastUpdated);
     },
 
     async saveState() {
@@ -120,7 +133,18 @@ const BoxCal = {
         
         if (this.user && !this.isSyncing) {
             try {
-                await setDoc(doc(db, "users", this.user.uid), this.state);
+                // Save settings to user doc
+                await setDoc(doc(db, "users", this.user.uid), { 
+                    settings: this.state.settings,
+                    lastUpdated: this.state.lastUpdated 
+                }, { merge: true });
+
+                // Save day to sub-collection
+                const dayRef = doc(db, "users", this.user.uid, "days", this.state.currentDay.date);
+                await setDoc(dayRef, {
+                    ...this.state.currentDay,
+                    lastUpdated: this.state.lastUpdated
+                });
             } catch (e) {
                 console.error("Error saving to cloud:", e);
             }
@@ -128,115 +152,92 @@ const BoxCal = {
     },
 
     async startCloudSync() {
-        const docRef = doc(db, "users", this.user.uid);
+        const userRef = doc(db, "users", this.user.uid);
+        const dayRef = doc(db, "users", this.user.uid, "days", this.viewingDate);
         
         try {
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const serverData = docSnap.data();
-                const localData = this.state;
-                
-                // If they JUST logged in via button/form, we ask for a decision
-                if (this.isLoggingIn) {
-                    const hasLocalData = Object.keys(localData.currentDay.filledBoxes).length > 0 || localData.history.length > 0;
-                    if (hasLocalData && this.isDifferent(localData, serverData)) {
-                        this.showConflictModal(serverData);
-                        this.isLoggingIn = false;
-                        return;
-                    }
+            // 1. Sync Settings
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                if (userData.settings) {
+                    this.state.settings = { ...this.state.settings, ...userData.settings };
                 }
+            }
 
-                // Otherwise (Refresh or No Conflict), do a silent smart merge
-                const merged = this.mergeStates(localData, serverData);
-                
-                let changedLocal = this.isDifferent(localData, merged);
-                let changedServer = this.isDifferent(serverData, merged);
+            // 2. Sync Current Day
+            const daySnap = await getDoc(dayRef);
+            if (daySnap.exists()) {
+                const cloudDay = daySnap.data();
+                const localKey = `box-cal-day-${this.viewingDate}`;
+                const localDayRaw = localStorage.getItem(localKey);
+                const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
 
-                if (changedLocal) {
-                    this.state = merged;
+                if (!localDay || cloudDay.lastUpdated > (localDay.lastUpdated || 0)) {
+                    this.state.currentDay = cloudDay;
                     this.saveLocalState(true);
+                    this.renderUI();
+                } else if (localDay && localDay.lastUpdated > (cloudDay.lastUpdated || 0)) {
+                    // Push local to cloud
+                    await setDoc(dayRef, localDay);
                 }
-                
-                if (changedServer) {
-                    await setDoc(docRef, merged);
-                }
-
-                this.renderUI();
             } else {
-                // No server data, push local data
-                await this.saveState();
+                // Cloud doesn't have this day yet, push local if it exists
+                const localKey = `box-cal-day-${this.viewingDate}`;
+                const localDayRaw = localStorage.getItem(localKey);
+                if (localDayRaw) {
+                    await setDoc(dayRef, JSON.parse(localDayRaw));
+                }
             }
 
             this.isLoggingIn = false;
-            this.setupRealtimeSync(docRef);
+            this.setupSyncListeners(userRef, dayRef);
         } catch (e) {
             console.error("Cloud sync failed:", e);
         }
     },
 
-    isDifferent(a, b) {
-        if (!a || !b) return true;
-        const aComp = { ...a };
-        const bComp = { ...b };
-        delete aComp.lastUpdated;
-        delete bComp.lastUpdated;
-        return JSON.stringify(aComp) !== JSON.stringify(bComp);
-    },
+    setupSyncListeners(userRef, dayRef) {
+        if (this.unsubscribeDay) this.unsubscribeDay();
+        if (this.unsubscribeSettings) this.unsubscribeSettings();
 
-    mergeStates(local, server) {
-        // 1. Settings (Take newest)
-        const settings = (local.lastUpdated >= server.lastUpdated) ? local.settings : server.settings;
-
-        // 2. Current Day
-        let currentDay;
-        if (local.currentDay.date === server.currentDay.date) {
-            // Same day: Merge boxes
-            currentDay = {
-                ...((local.lastUpdated >= server.lastUpdated) ? local.currentDay : server.currentDay),
-                filledBoxes: { ...server.currentDay.filledBoxes, ...local.currentDay.filledBoxes }
-            };
-        } else {
-            // Different days: take whichever is newer
-            currentDay = (local.lastUpdated >= server.lastUpdated) ? local.currentDay : server.currentDay;
-        }
-
-        // 3. History (Merge and unique by date)
-        const historyMap = {};
-        [...(server.history || []), ...(local.history || [])].forEach(entry => {
-            if (!historyMap[entry.date] || historyMap[entry.date].calories < entry.calories) {
-                historyMap[entry.date] = entry;
-            }
-        });
-        const history = Object.values(historyMap)
-            .sort((a, b) => b.date.localeCompare(a.date))
-            .slice(0, 50);
-
-        return {
-            version: Math.max(local.version || 0, server.version || 0),
-            settings,
-            currentDay,
-            history,
-            lastUpdated: Math.max(local.lastUpdated || 0, server.lastUpdated || 0)
-        };
-    },
-
-    setupRealtimeSync(docRef) {
-        if (this.unsubscribeSnapshot) this.unsubscribeSnapshot();
-
-        this.unsubscribeSnapshot = onSnapshot(docRef, (doc) => {
+        // 1. Day Listener
+        this.unsubscribeDay = onSnapshot(dayRef, (doc) => {
             if (doc.exists() && !this.isSyncing) {
-                this.isSyncing = true;
                 const cloudData = doc.data();
-                
-                if (this.isDifferent(cloudData, this.state)) {
-                    this.state = cloudData;
+                const localKey = `box-cal-day-${this.viewingDate}`;
+                const localDayRaw = localStorage.getItem(localKey);
+                const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
+
+                if (!localDay || cloudData.lastUpdated > (localDay.lastUpdated || 0)) {
+                    this.isSyncing = true;
+                    this.state.currentDay = cloudData;
                     this.saveLocalState(true);
                     this.renderUI();
+                    this.isSyncing = false;
                 }
-                this.isSyncing = false;
+            }
+        });
+
+        // 2. Settings Listener
+        this.unsubscribeSettings = onSnapshot(userRef, (doc) => {
+            if (doc.exists() && !this.isSyncing) {
+                const cloudData = doc.data();
+                if (cloudData.settings && cloudData.lastUpdated > (this.state.lastUpdated || 0)) {
+                    this.isSyncing = true;
+                    this.state.settings = { ...this.state.settings, ...cloudData.settings };
+                    this.state.lastUpdated = cloudData.lastUpdated;
+                    this.saveLocalState(true);
+                    this.renderUI();
+                    this.isSyncing = false;
+                }
             }
         });
     },
+
+    // Removed isDifferent and mergeStates in favor of per-day timestamped sync.
+
+    // Removed old setupRealtimeSync in favor of setupSyncListeners
 
     showConflictModal(serverData) {
         const modal = document.getElementById('conflict-modal');
@@ -395,55 +396,73 @@ const BoxCal = {
         return new Date().toISOString().split('T')[0];
     },
 
-    // ── Daily Reset ────────────────────────────────────
-    async checkDailyReset() {
-        const today = this.getTodayDate();
-        if (this.state.currentDay.date === today) return;
+    // Removed checkDailyReset as per-day storage handles it naturally.
 
-        const filled = this.state.currentDay.filledBoxes || {};
-        const count = Object.keys(filled).length;
-
-        if (count > 0) {
-            const historyEntry = {
-                date: this.state.currentDay.date,
-                calories: count * this.state.settings.increment
-            };
-
-            // Keep in local state for immediate view
-            this.state.history.unshift(historyEntry);
-            this.state.history = this.state.history.slice(0, 30); // Cache last 30 locally
-
-            // Save to dedicated sub-collection if logged in
-            if (this.user) {
-                try {
-                    const histRef = doc(db, "users", this.user.uid, "history", historyEntry.date);
-                    await setDoc(histRef, historyEntry);
-                } catch (e) {
-                    console.error("Error saving day history:", e);
-                }
-            }
+    async handleDebugData() {
+        if (!this.user) {
+            alert("Please log in to see server data.");
+            return;
         }
 
-        this.state.currentDay = { date: today, filledBoxes: {}, activeMeal: 'breakfast' };
-        this.saveState();
+        const debugModal = document.getElementById('debug-modal');
+        const output = document.getElementById('debug-output');
+        output.textContent = "Fetching data from server...";
+        debugModal.classList.add('active');
+
+        try {
+            const userRef = doc(db, "users", this.user.uid);
+            const userSnap = await getDoc(userRef);
+            
+            const daysRef = collection(db, "users", this.user.uid, "days");
+            const daysSnap = await getDocs(query(daysRef, orderBy("date", "desc"), limit(10)));
+            
+            const serverData = {
+                user: userSnap.exists() ? userSnap.data() : "No user doc",
+                recentDays: []
+            };
+
+            daysSnap.forEach(doc => {
+                serverData.recentDays.push(doc.data());
+            });
+
+            output.textContent = JSON.stringify(serverData, null, 2);
+        } catch (e) {
+            output.textContent = "Error fetching data: " + e.message;
+        }
+    },
+
+    copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('copy-debug');
+            const originalText = btn.textContent;
+            btn.textContent = "Copied!";
+            setTimeout(() => btn.textContent = originalText, 2000);
+        }).catch(err => {
+            console.error('Could not copy text: ', err);
+        });
     },
 
     async fetchHistory() {
         if (!this.user) return;
 
         try {
-            const histRef = collection(db, "users", this.user.uid, "history");
-            const q = query(histRef, orderBy("date", "desc"), limit(50)); // Fetch last 50
+            const daysRef = collection(db, "users", this.user.uid, "days");
+            const q = query(daysRef, orderBy("date", "desc"), limit(50));
             const querySnapshot = await getDocs(q);
             
             const history = [];
             querySnapshot.forEach((doc) => {
-                history.push(doc.data());
+                const data = doc.data();
+                const count = Object.keys(data.filledBoxes || {}).length;
+                history.push({
+                    date: data.date,
+                    calories: count * (this.state.settings.increment || 50)
+                });
             });
 
             if (history.length > 0) {
                 this.state.history = history;
-                this.saveLocalState();
+                this.saveLocalState(true);
                 this.renderHistory();
             }
         } catch (e) {
@@ -453,11 +472,41 @@ const BoxCal = {
 
     // ── Render ─────────────────────────────────────────
     renderUI() {
+        this.updateDateDisplay();
         this.renderStats();
         this.renderProgressBar();
         this.renderGrid();
         this.renderHistory();
         this.syncMealButtons();
+    },
+
+    updateDateDisplay() {
+        const label = document.getElementById('current-date-label');
+        if (!label) return;
+
+        if (this.viewingDate === this.currentDate) {
+            label.textContent = 'Today';
+        } else {
+            const d = new Date(this.viewingDate + 'T12:00:00');
+            label.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+    },
+
+    changeDate(offset) {
+        const d = new Date(this.viewingDate + 'T12:00:00');
+        d.setDate(d.getDate() + offset);
+        const newDate = d.toISOString().split('T')[0];
+        
+        // Don't go into the future
+        if (newDate > this.currentDate) return;
+
+        this.viewingDate = newDate;
+        this.loadDay(this.viewingDate);
+        this.renderUI();
+        
+        if (this.user) {
+            this.startCloudSync();
+        }
     },
 
     renderStats() {
@@ -551,14 +600,26 @@ const BoxCal = {
             return;
         }
 
-        list.innerHTML = this.state.history.map(entry => {
-            const d   = new Date(entry.date + 'T12:00:00');
+        list.innerHTML = '';
+        this.state.history.forEach(entry => {
+            const d = new Date(entry.date + 'T12:00:00');
             const str = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-            return `<div class="history-item">
+            
+            const item = document.createElement('div');
+            item.className = 'history-item clickable';
+            item.innerHTML = `
                 <span class="history-date">${str}</span>
                 <span class="history-cals">${entry.calories.toLocaleString()} cal</span>
-            </div>`;
-        }).join('');
+            `;
+            item.addEventListener('click', () => {
+                this.viewingDate = entry.date;
+                this.loadDay(this.viewingDate);
+                this.renderUI();
+                document.getElementById('history-modal').classList.remove('active');
+                if (this.user) this.startCloudSync();
+            });
+            list.appendChild(item);
+        });
     },
 
     syncMealButtons() {
@@ -647,6 +708,29 @@ const BoxCal = {
 
     // ── Event Listeners ────────────────────────────────
     setupEventListeners() {
+        // Date navigation
+        document.getElementById('prev-day').addEventListener('click', () => this.changeDate(-1));
+        document.getElementById('next-day').addEventListener('click', () => this.changeDate(1));
+
+        // Auto-detect day change
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                const today = this.getTodayDate();
+                if (today !== this.currentDate) {
+                    const wasOnToday = (this.viewingDate === this.currentDate);
+                    this.currentDate = today;
+                    if (wasOnToday) {
+                        this.viewingDate = today;
+                        this.loadDay(this.viewingDate);
+                        this.renderUI();
+                    }
+                }
+                
+                // Always check for cloud updates on focus
+                if (this.user) this.startCloudSync();
+            }
+        });
+
         // Sync button
         document.getElementById('sync-btn').addEventListener('click', () => this.handleSync());
 
@@ -678,10 +762,14 @@ const BoxCal = {
         });
 
         const grid = document.getElementById('box-grid');
-        let pressTimer;
+        let pressTimer = null;
 
         const startPress = (e) => {
             if (!e.target.classList.contains('box')) return;
+            
+            // Prevent multiple timers if both touch and mouse events fire
+            if (pressTimer) clearTimeout(pressTimer);
+            
             this.isLongPress = false;
             pressTimer = setTimeout(() => {
                 this.isLongPress = true;
@@ -690,15 +778,29 @@ const BoxCal = {
                     'Reset all boxes for today?',
                     () => this.resetDay()
                 );
+                pressTimer = null;
             }, 800);
         };
-        const endPress = () => clearTimeout(pressTimer);
+
+        const endPress = () => {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+        };
 
         grid.addEventListener('mousedown',  startPress);
         grid.addEventListener('touchstart', startPress, { passive: true });
         grid.addEventListener('mouseup',    endPress);
         grid.addEventListener('touchend',   endPress);
+        grid.addEventListener('touchcancel', endPress);
+        grid.addEventListener('touchmove',  endPress); // Clear timer if user scrolls
         grid.addEventListener('mouseleave', endPress);
+        
+        // Prevent context menu on boxes to allow for clean long-press
+        grid.addEventListener('contextmenu', e => {
+            if (e.target.classList.contains('box')) e.preventDefault();
+        });
 
         const modal      = document.getElementById('settings-modal');
         const goalInput  = document.getElementById('daily-goal');
@@ -769,8 +871,19 @@ const BoxCal = {
             historyModal.classList.add('active');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
+        // History Modal close
         document.getElementById('close-history').addEventListener('click', () => historyModal.classList.remove('active'));
         historyModal.addEventListener('click', e => { if (e.target === historyModal) historyModal.classList.remove('active'); });
+
+        // Debug Modal
+        document.getElementById('debug-btn').addEventListener('click', () => this.handleDebugData());
+        document.getElementById('close-debug').addEventListener('click', () => document.getElementById('debug-modal').classList.remove('active'));
+        document.getElementById('debug-modal').addEventListener('click', e => { 
+            if (e.target === document.getElementById('debug-modal')) document.getElementById('debug-modal').classList.remove('active'); 
+        });
+        document.getElementById('copy-debug').addEventListener('click', () => {
+            this.copyToClipboard(document.getElementById('debug-output').textContent);
+        });
 
         // Close confirm modal on outside click
         const confirmModal = document.getElementById('confirm-modal');
