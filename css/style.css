@@ -81,8 +81,27 @@ h1 {
 .date-display {
     display: flex;
     align-items: center;
+    gap: 4px;
+}
+
+.date-picker-trigger {
+    display: flex;
+    align-items: center;
     gap: 8px;
-    margin-left: 2px;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 10px;
+    transition: var(--transition);
+    user-select: none;
+    position: relative;
+}
+
+.date-picker-trigger:hover {
+    background: var(--surface-light);
+}
+
+.date-picker-trigger:hover #current-date-label {
+    color: var(--text-main);
 }
 
 #current-date-label {
@@ -91,6 +110,18 @@ h1 {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    transition: var(--transition);
+}
+
+.calendar-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+    transition: var(--transition);
+}
+
+.date-picker-trigger:hover .calendar-icon {
+    color: var(--accent);
 }
 
 #prev-day, #next-day {
@@ -98,11 +129,11 @@ h1 {
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 2px;
+    padding: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+    border-radius: 10px;
     transition: var(--transition);
 }
 
@@ -112,9 +143,116 @@ h1 {
 }
 
 #prev-day i, #next-day i {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
 }
+
+/* ── Flatpickr Overrides ─────────────────────────
+   Only override colors, fonts, and borders.
+   Do NOT override width, padding, or flex on
+   layout elements — Flatpickr's internal pixel
+   math handles alignment automatically.
+──────────────────────────────────────────────── */
+.flatpickr-calendar {
+    background: var(--surface) !important;
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: var(--glass-shadow) !important;
+    border-radius: var(--radius-md) !important;
+    font-family: 'Outfit', sans-serif !important;
+}
+
+.flatpickr-months .flatpickr-month {
+    color: var(--text-main) !important;
+    background: transparent !important;
+}
+
+.flatpickr-current-month {
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+}
+
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+    font-weight: 800 !important;
+    color: var(--text-main) !important;
+    background: var(--surface) !important;
+}
+
+.flatpickr-monthDropdown-month {
+    background: var(--surface) !important;
+}
+
+.flatpickr-current-month input.cur-year {
+    font-weight: 400 !important;
+    color: var(--text-muted) !important;
+}
+
+.flatpickr-months .flatpickr-prev-month,
+.flatpickr-months .flatpickr-next-month {
+    fill: var(--text-main) !important;
+    transition: var(--transition);
+}
+
+.flatpickr-months .flatpickr-prev-month:hover,
+.flatpickr-months .flatpickr-next-month:hover {
+    background: var(--surface-light) !important;
+    border-radius: 8px;
+}
+
+/* Weekday header: color & font only */
+.flatpickr-weekdays {
+    background: hsla(0, 0%, 100%, 0.04) !important;
+}
+
+.flatpickr-weekday {
+    color: var(--text-muted) !important;
+    font-weight: 700 !important;
+    font-size: 0.72rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
+}
+
+/* Days */
+.flatpickr-day {
+    color: var(--text-main) !important;
+    border-radius: 8px !important;
+    font-family: 'Outfit', sans-serif !important;
+}
+
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-day.flatpickr-disabled:hover {
+    color: var(--text-muted) !important;
+    opacity: 0.3;
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: white !important;
+    box-shadow: 0 4px 12px hsla(200, 85%, 55%, 0.4) !important;
+}
+
+.flatpickr-day:hover {
+    background: var(--surface-light) !important;
+    border-color: transparent !important;
+}
+
+.flatpickr-day.today {
+    border-color: var(--accent) !important;
+}
+
+.flatpickr-calendar.arrowTop:after,
+.flatpickr-calendar.arrowTop:before {
+    border-bottom-color: var(--surface) !important;
+}
+
+
+
+
+
+
+
 
 #settings-btn,
 #history-btn {
@@ -543,6 +681,53 @@ h1 {
     flex-shrink: 0;
 }
 
+/* Debug Section */
+.debug-section {
+    margin-top: 8px;
+    padding: 12px;
+    background: hsla(0, 0%, 100%, 0.02);
+    border: 1px dashed var(--glass-border);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.debug-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+}
+
+.debug-group {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-debug {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    padding: 8px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: var(--transition);
+}
+
+.btn-debug i { width: 14px; height: 14px; }
+.btn-debug:hover { background: var(--surface-light); color: var(--text-main); }
+.btn-debug.danger { color: #ff6b6b; border-color: hsla(0, 85%, 60%, 0.2); }
+.btn-debug.danger:hover { background: hsla(0, 85%, 60%, 0.1); }
+
 .form-group select {
     background: var(--bg-dark);
     border: 1px solid var(--glass-border);
@@ -612,6 +797,8 @@ input[type="number"] { -moz-appearance: textfield; }
 .btn-primary:hover { filter: brightness(1.12); }
 .btn-secondary { background: var(--surface-light); color: var(--text-muted); }
 .btn-secondary:hover { color: var(--text-main); }
+.btn-danger { background: hsla(0, 85%, 60%, 0.1); color: #ff6b6b; border: 1px solid hsla(0, 85%, 60%, 0.2); }
+.btn-danger:hover { background: hsla(0, 85%, 60%, 0.2); color: #ff8787; }
 
 /* ── Auth Modal ────────────────────────────────── */
 .auth-options { display: flex; flex-direction: column; gap: 20px; }

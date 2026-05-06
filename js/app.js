@@ -5,7 +5,7 @@
 
 import { 
     db, auth, providers, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-    onAuthStateChanged, signOut, doc, getDoc, setDoc, onSnapshot,
+    onAuthStateChanged, signOut, doc, getDoc, setDoc, onSnapshot, deleteDoc,
     collection, query, orderBy, limit, getDocs 
 } from './firebase.js';
 
@@ -38,6 +38,7 @@ const BoxCal = {
     isLongPress: false,
     unsubscribeDay: null,
     unsubscribeSettings: null,
+    fp: null,
 
     // ── Init ───────────────────────────────────────────
     init() {
@@ -96,6 +97,8 @@ const BoxCal = {
         if (savedDay) {
             try {
                 this.state.currentDay = JSON.parse(savedDay);
+                // Ensure the date property is correctly set to what we requested
+                this.state.currentDay.date = date;
             } catch (e) {
                 console.error("Error loading day data", e);
                 this.state.currentDay = { date: date, filledBoxes: {}, activeMeal: 'breakfast' };
@@ -118,7 +121,9 @@ const BoxCal = {
         localStorage.setItem('box-cal-settings', JSON.stringify(this.state.settings));
         
         // Save current viewing day
-        const dayKey = `box-cal-day-${this.state.currentDay.date}`;
+        // Use this.viewingDate as the source of truth for the key
+        const saveDate = this.state.currentDay.date || this.viewingDate;
+        const dayKey = `box-cal-day-${saveDate}`;
         localStorage.setItem(dayKey, JSON.stringify(this.state.currentDay));
         
         // Save history (cache)
@@ -139,8 +144,16 @@ const BoxCal = {
                     lastUpdated: this.state.lastUpdated 
                 }, { merge: true });
 
+                // Always use viewingDate as the canonical day key to prevent ghost documents
+                const saveDate = this.viewingDate || this.state.currentDay.date;
+                if (!saveDate) {
+                    console.warn('saveState: no date available, skipping cloud save');
+                    return;
+                }
+                this.state.currentDay.date = saveDate; // Keep in sync
+
                 // Save day to sub-collection
-                const dayRef = doc(db, "users", this.user.uid, "days", this.state.currentDay.date);
+                const dayRef = doc(db, "users", this.user.uid, "days", saveDate);
                 await setDoc(dayRef, {
                     ...this.state.currentDay,
                     lastUpdated: this.state.lastUpdated
@@ -156,10 +169,14 @@ const BoxCal = {
         const dayRef = doc(db, "users", this.user.uid, "days", this.viewingDate);
         
         try {
-            // 1. Sync Settings
+            // 1. Sync Settings & Check for Wipe
             const userSnap = await getDoc(userRef);
             if (userSnap.exists()) {
                 const userData = userSnap.data();
+                
+                // CRITICAL: Check for remote wipe signal before doing anything else
+                if (userData.wipedAt && this.handleRemoteWipe(userData.wipedAt)) return;
+
                 if (userData.settings) {
                     this.state.settings = { ...this.state.settings, ...userData.settings };
                 }
@@ -182,11 +199,27 @@ const BoxCal = {
                     await setDoc(dayRef, localDay);
                 }
             } else {
-                // Cloud doesn't have this day yet, push local if it exists
+                // Cloud doesn't have this day yet. 
+                // Only push local if it's not stale relative to the last known wipe.
                 const localKey = `box-cal-day-${this.viewingDate}`;
                 const localDayRaw = localStorage.getItem(localKey);
                 if (localDayRaw) {
-                    await setDoc(dayRef, JSON.parse(localDayRaw));
+                    try {
+                        const localDay = JSON.parse(localDayRaw);
+                        const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
+                        
+                        if ((localDay.lastUpdated || 0) > lastWipe) {
+                            await setDoc(dayRef, localDay);
+                        } else {
+                            // This is ghost data from before a wipe — discard it
+                            console.log(`Discarding stale local data for ${this.viewingDate}`);
+                            localStorage.removeItem(localKey);
+                            this.loadDay(this.viewingDate); // Reset in-memory state
+                            this.renderUI();
+                        }
+                    } catch (e) {
+                        console.error("Error parsing local day during sync:", e);
+                    }
                 }
             }
 
@@ -197,14 +230,41 @@ const BoxCal = {
         }
     },
 
+    handleRemoteWipe(cloudWipedAt) {
+        const lastSeenWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
+        if (cloudWipedAt > lastSeenWipe) {
+            console.log('Remote wipe detected — resetting local state.');
+            
+            // Prevent any outgoing saves while we are wiping
+            this.isSyncing = true;
+
+            localStorage.setItem('box-cal-wiped-at', cloudWipedAt);
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('box-cal-') && key !== 'box-cal-wiped-at') {
+                    localStorage.removeItem(key);
+                }
+            });
+            
+            // Force a clean state before reload just in case
+            this.state.currentDay = { date: this.getTodayDate(), filledBoxes: {}, activeMeal: 'breakfast' };
+            this.state.history = [];
+            
+            location.reload();
+            return true;
+        }
+        return false;
+    },
+
     setupSyncListeners(userRef, dayRef) {
         if (this.unsubscribeDay) this.unsubscribeDay();
         if (this.unsubscribeSettings) this.unsubscribeSettings();
 
         // 1. Day Listener
-        this.unsubscribeDay = onSnapshot(dayRef, (doc) => {
-            if (doc.exists() && !this.isSyncing) {
-                const cloudData = doc.data();
+        this.unsubscribeDay = onSnapshot(dayRef, (snap) => {
+            if (this.isSyncing) return;
+
+            if (snap.exists()) {
+                const cloudData = snap.data();
                 const localKey = `box-cal-day-${this.viewingDate}`;
                 const localDayRaw = localStorage.getItem(localKey);
                 const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
@@ -212,7 +272,20 @@ const BoxCal = {
                 if (!localDay || cloudData.lastUpdated > (localDay.lastUpdated || 0)) {
                     this.isSyncing = true;
                     this.state.currentDay = cloudData;
+                    this.state.currentDay.date = this.viewingDate; // Force correct date context
                     this.saveLocalState(true);
+                    this.renderUI();
+                    this.isSyncing = false;
+                }
+            } else {
+                // Document deleted remotely (e.g. via wipe or erase)
+                // If we have local data, check if it's stale
+                const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
+                if ((this.state.currentDay.lastUpdated || 0) <= lastWipe) {
+                    console.log(`Day ${this.viewingDate} is empty in cloud and local is stale — clearing.`);
+                    this.isSyncing = true;
+                    this.state.currentDay = { date: this.viewingDate, filledBoxes: {}, activeMeal: 'breakfast' };
+                    localStorage.removeItem(`box-cal-day-${this.viewingDate}`);
                     this.renderUI();
                     this.isSyncing = false;
                 }
@@ -220,17 +293,21 @@ const BoxCal = {
         });
 
         // 2. Settings Listener
-        this.unsubscribeSettings = onSnapshot(userRef, (doc) => {
-            if (doc.exists() && !this.isSyncing) {
-                const cloudData = doc.data();
-                if (cloudData.settings && cloudData.lastUpdated > (this.state.lastUpdated || 0)) {
-                    this.isSyncing = true;
-                    this.state.settings = { ...this.state.settings, ...cloudData.settings };
-                    this.state.lastUpdated = cloudData.lastUpdated;
-                    this.saveLocalState(true);
-                    this.renderUI();
-                    this.isSyncing = false;
-                }
+        this.unsubscribeSettings = onSnapshot(userRef, (snap) => {
+            if (!snap.exists()) return;
+            const cloudData = snap.data();
+
+            // ── Remote wipe detection ──────────────────────────────────────
+            if (cloudData.wipedAt && this.handleRemoteWipe(cloudData.wipedAt)) return;
+            // ──────────────────────────────────────────────────────────────
+
+            if (!this.isSyncing && cloudData.settings && cloudData.lastUpdated > (this.state.lastUpdated || 0)) {
+                this.isSyncing = true;
+                this.state.settings = { ...this.state.settings, ...cloudData.settings };
+                this.state.lastUpdated = cloudData.lastUpdated;
+                this.saveLocalState(true);
+                this.renderUI();
+                this.isSyncing = false;
             }
         });
     },
@@ -393,7 +470,11 @@ const BoxCal = {
     },
 
     getTodayDate() {
-        return new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     },
 
     // Removed checkDailyReset as per-day storage handles it naturally.
@@ -429,6 +510,58 @@ const BoxCal = {
         } catch (e) {
             output.textContent = "Error fetching data: " + e.message;
         }
+    },
+
+    async deleteAllData() {
+        this.showConfirm(
+            'Wipe All Data',
+            'This will PERMANENTLY delete all calorie logs from every day. Your account and settings will remain. This cannot be undone.',
+            async () => {
+                const wipedAt = Date.now();
+                this.isSyncing = true; // Block normal sync during wipe
+
+                // 1. Clear Cloud Data (if logged in)
+                if (this.user) {
+                    try {
+                        // CRITICAL: Set local wipe timestamp FIRST so our own listener doesn't 
+                        // trigger a reload when we update the user document.
+                        localStorage.setItem('box-cal-wiped-at', wipedAt);
+
+                        // Signal all other devices to wipe immediately
+                        await setDoc(doc(db, "users", this.user.uid), { 
+                            lastUpdated: wipedAt,
+                            wipedAt: wipedAt
+                        }, { merge: true });
+
+                        const daysRef = collection(db, "users", this.user.uid, "days");
+                        const daysSnap = await getDocs(daysRef);
+                        
+                        // Delete all documents in the days sub-collection
+                        const deletePromises = [];
+                        daysSnap.forEach((doc) => {
+                            deletePromises.push(deleteDoc(doc.ref));
+                        });
+                        await Promise.all(deletePromises);
+                    } catch (e) {
+                        console.error("Error wiping cloud days:", e);
+                        alert("Failed to wipe some cloud data. Check console.");
+                    }
+                }
+
+                // 2. Clear Local Storage
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith('box-cal-') && key !== 'box-cal-wiped-at') {
+                        localStorage.removeItem(key);
+                    }
+                });
+                
+                // Ensure wipedAt is definitely set (it was set above, but just in case of non-user mode)
+                localStorage.setItem('box-cal-wiped-at', wipedAt);
+
+                // 3. Reload (Stay logged in)
+                location.reload();
+            }
+        );
     },
 
     copyToClipboard(text) {
@@ -501,6 +634,9 @@ const BoxCal = {
         if (newDate > this.currentDate) return;
 
         this.viewingDate = newDate;
+        if (this.fp) {
+            this.fp.setDate(this.viewingDate, false);
+        }
         this.loadDay(this.viewingDate);
         this.renderUI();
         
@@ -613,6 +749,7 @@ const BoxCal = {
             `;
             item.addEventListener('click', () => {
                 this.viewingDate = entry.date;
+                if (this.fp) this.fp.setDate(this.viewingDate, false);
                 this.loadDay(this.viewingDate);
                 this.renderUI();
                 document.getElementById('history-modal').classList.remove('active');
@@ -657,6 +794,8 @@ const BoxCal = {
             okBtn.removeEventListener('click', handleOk);
             cancelBtn.removeEventListener('click', handleCancel);
             closeBtn.removeEventListener('click', handleCancel);
+            // Reset long-press flag in case this was triggered by a long-press
+            this.isLongPress = false;
         };
         
         const handleOk = () => {
@@ -668,9 +807,11 @@ const BoxCal = {
             cleanup();
         };
         
-        okBtn.onclick = handleOk;
-        cancelBtn.onclick = handleCancel;
-        closeBtn.onclick = handleCancel;
+        // Use addEventListener (not .onclick) so removeEventListener works correctly
+        // and old handlers don't stack up across multiple showConfirm calls
+        okBtn.addEventListener('click', handleOk);
+        cancelBtn.addEventListener('click', handleCancel);
+        closeBtn.addEventListener('click', handleCancel);
         
         modal.classList.add('active');
     },
@@ -711,6 +852,29 @@ const BoxCal = {
         // Date navigation
         document.getElementById('prev-day').addEventListener('click', () => this.changeDate(-1));
         document.getElementById('next-day').addEventListener('click', () => this.changeDate(1));
+
+        // Date Picker (Flatpickr)
+        this.fp = flatpickr("#date-input", {
+            maxDate: "today",
+            disableMobile: "true",
+            appendTo: document.body, // Escape overflow:hidden containers so calendar isn't clipped
+            position: "auto",
+            static: false,
+            monthSelectorType: "static",
+            animate: true,
+            onChange: (selectedDates, dateStr) => {
+                if (dateStr && dateStr !== this.viewingDate) {
+                    this.viewingDate = dateStr;
+                    this.loadDay(this.viewingDate);
+                    this.renderUI();
+                    if (this.user) this.startCloudSync();
+                }
+            }
+        });
+
+        document.getElementById('date-picker-trigger').addEventListener('click', () => {
+            this.fp.open();
+        });
 
         // Auto-detect day change
         document.addEventListener('visibilitychange', () => {
@@ -884,6 +1048,9 @@ const BoxCal = {
         document.getElementById('copy-debug').addEventListener('click', () => {
             this.copyToClipboard(document.getElementById('debug-output').textContent);
         });
+
+        // Delete All Data button
+        document.getElementById('delete-all-btn').addEventListener('click', () => this.deleteAllData());
 
         // Close confirm modal on outside click
         const confirmModal = document.getElementById('confirm-modal');
