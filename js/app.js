@@ -1,5 +1,5 @@
 /**
- * Box-Cal — App Logic
+ * Nomblox — App Logic
  * Meal-based calorie tracking with color-coded boxes.
  */
 
