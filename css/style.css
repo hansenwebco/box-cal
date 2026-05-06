@@ -262,6 +262,28 @@ h1 {
     border-color: var(--accent) !important;
 }
 
+/* Day has data indicator */
+.flatpickr-day.has-stats:not(.selected) {
+    position: relative;
+}
+
+.flatpickr-day.has-stats:not(.selected)::after {
+    content: '';
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3px;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 4px var(--accent);
+}
+
+.flatpickr-day.has-stats.selected::after {
+    display: none;
+}
+
 .flatpickr-calendar.arrowTop:after,
 .flatpickr-calendar.arrowTop:before {
     border-bottom-color: var(--surface) !important;
