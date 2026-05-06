@@ -356,6 +356,15 @@ header {
     /* Success green */
 }
 
+.user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid var(--accent);
+    box-shadow: 0 0 10px hsla(200, 85%, 55%, 0.3);
+}
+
 .sync-btn.loading {
     animation: sync-pulse 1.5s infinite;
 }
@@ -1347,8 +1356,9 @@ header {
     .modal-content {
         max-width: 100%;
         max-height: 100%;
-        height: 100%;
-        border-radius: 0;
+        height: auto;
+        min-height: 300px;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         transform: translateY(100%);
         /* Start off-screen */
         padding: 0;
@@ -1358,7 +1368,7 @@ header {
     }
 
     .modal-body {
-        padding: 0 16px 20px 16px;
+        padding: 0 16px 40px 16px;
     }
 
     .modal.active .modal-content {
@@ -1600,6 +1610,62 @@ header {
     border-color: hsla(0, 85%, 60%, 0.2);
 }
 
+/* ── Mobile Optimization ────────────────────────── */
+@media (max-width: 480px) {
+    .app-container {
+        padding: 16px 16px 32px;
+        gap: 16px;
+    }
+
+    .logo-text {
+        font-size: 1.75rem;
+        margin-bottom: 2px;
+    }
+
+    .date-display {
+        gap: 2px;
+    }
+
+    .date-picker-trigger {
+        padding: 4px 8px;
+    }
+
+    #current-date-label {
+        font-size: 0.75rem;
+    }
+
+    #prev-day, #next-day {
+        padding: 6px;
+    }
+
+    .header-actions {
+        gap: 6px;
+    }
+
+    #settings-btn, #history-btn {
+        width: 38px;
+        height: 38px;
+    }
+
+    .sync-btn {
+        padding: 6px;
+    }
+}
+
+@media (max-width: 360px) {
+    .logo-text {
+        font-size: 1.5rem;
+    }
+    
+    .header-content {
+        align-items: flex-start;
+    }
+
+    .header-actions {
+        margin-top: 4px;
+    }
+}
+
 .btn-debug.danger:hover {
     background: hsla(0, 85%, 60%, 0.1);
 }
@@ -1773,11 +1839,25 @@ input[type="number"] {
 }
 
 .google-btn {
-    background: #4285F4;
+    background: #ffffff;
+    color: #1f1f1f !important;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+    border: none;
+    transition: var(--transition);
+}
+
+.google-btn:hover {
+    background: #f1f3f4;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.google-btn:active {
+    transform: translateY(1px);
 }
 
 .auth-divider {
@@ -1805,6 +1885,58 @@ input[type="number"] {
     gap: 10px;
 }
 
+.auth-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.auth-toggle .btn-ghost {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    border: none;
+    color: var(--accent);
+}
+
+.auth-toggle .btn-ghost:hover {
+    background: hsla(200, 85%, 55%, 0.1);
+    color: var(--accent);
+}
+
+.field-helper {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 6px;
+}
+
+.btn-link-sm {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: var(--transition);
+}
+
+.btn-link-sm:hover {
+    color: var(--accent);
+    background: hsla(200, 85%, 55%, 0.05);
+}
+
+.auth-options {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-top: 12px;
+}
+
 .auth-options input {
     background: var(--bg-dark);
     border: 1px solid var(--glass-border);
@@ -1813,6 +1945,13 @@ input[type="number"] {
     border-radius: var(--radius-sm);
     width: 100%;
     font-family: inherit;
+    transition: var(--transition);
+}
+
+.auth-options input:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--surface-light);
 }
 
 /* ── Conflict Modal ────────────────────────────── */

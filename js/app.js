@@ -6,7 +6,7 @@
 import { 
     db, auth, providers, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword,
     onAuthStateChanged, signOut, doc, getDoc, setDoc, onSnapshot, deleteDoc,
-    collection, query, orderBy, limit, getDocs 
+    collection, query, orderBy, limit, getDocs, sendPasswordResetEmail 
 } from './firebase.js';
 
 const STATE_VERSION = 3; // bump when schema changes
@@ -40,6 +40,7 @@ const NomBlox = {
     unsubscribeSettings: null,
     fp: null,
     historyDates: new Set(),
+    authMode: 'login', // 'login', 'signup', or 'forgot'
 
     // ── Init ───────────────────────────────────────────
     init() {
@@ -85,6 +86,7 @@ const NomBlox = {
             if (user) {
                 console.log("Auth state changed: User logged in", user.email);
                 this.startCloudSync();
+                this.fetchHistory(true); // Load history once on login
                 document.getElementById('auth-modal').classList.remove('active');
             } else {
                 console.log("Auth state changed: User logged out");
@@ -97,6 +99,9 @@ const NomBlox = {
                     this.unsubscribeSettings();
                     this.unsubscribeSettings = null;
                 }
+                // Clear local data on logout to ensure no data leaks between accounts
+                this.clearLocalData();
+                this.renderUI();
             }
         });
     },
@@ -169,15 +174,39 @@ const NomBlox = {
         
         // Update history dates for calendar dots
         const count = Object.keys(this.state.currentDay.filledBoxes).length;
-        if (count > 0) {
-            this.historyDates.add(this.viewingDate);
-        } else {
-            this.historyDates.delete(this.viewingDate);
-        }
         if (this.fp) this.fp.redraw();
         
+        // Update in-memory history for stats/history modal consistency
+        this.updateHistoryEntry(saveDate, count);
+
         // Legacy support / overall metadata
         localStorage.setItem('nomblox-last-updated', this.state.lastUpdated);
+    },
+
+    /** Update a single entry in the history array without a full re-fetch */
+    updateHistoryEntry(date, boxCount) {
+        const calories = boxCount * this.state.settings.increment;
+        const index = this.state.history.findIndex(h => h.date === date);
+        
+        // Update history dates for calendar dots
+        if (calories > 0) {
+            this.historyDates.add(date);
+        } else {
+            this.historyDates.delete(date);
+        }
+        if (this.fp) this.fp.redraw();
+
+        // Update calorie count in history array
+        if (index !== -1) {
+            this.state.history[index].calories = calories;
+        } else if (calories > 0) {
+            this.state.history.push({
+                date: date,
+                calories: calories,
+                meals: {} 
+            });
+            this.state.history.sort((a, b) => b.date.localeCompare(a.date));
+        }
     },
 
     async saveState() {
@@ -215,82 +244,10 @@ const NomBlox = {
         const userRef = doc(db, "users", this.user.uid);
         const dayRef = doc(db, "users", this.user.uid, "days", this.viewingDate);
         
-        try {
-            // 1. Sync Settings & Check for Wipe
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-                const userData = userSnap.data();
-                
-                // CRITICAL: Check for remote wipe signal before doing anything else
-                if (userData.wipedAt && this.handleRemoteWipe(userData.wipedAt)) return;
-
-                if (userData.settings) {
-                    this.state.settings = { ...this.state.settings, ...userData.settings };
-                }
-            }
-
-            // 2. Sync Current Day
-            // Snapshot the date we're syncing for — if user navigates during async, bail out
-            const syncDate = this.viewingDate;
-            const daySnap = await getDoc(dayRef);
-
-            // Bail if user navigated away during the async fetch
-            if (this.viewingDate !== syncDate) {
-                console.log(`User navigated from ${syncDate} to ${this.viewingDate} during sync — aborting stale sync.`);
-                return;
-            }
-
-            if (daySnap.exists()) {
-                const cloudDay = daySnap.data();
-                const localKey = `nomblox-day-${syncDate}`;
-                const localDayRaw = localStorage.getItem(localKey);
-                const localDay = localDayRaw ? JSON.parse(localDayRaw) : null;
-
-                if (!localDay || (cloudDay.lastUpdated || 0) > (localDay.lastUpdated || 0)) {
-                    console.log(`Initial cloud sync: applying remote data for ${syncDate}`);
-                    this.isSyncing = true;
-                    try {
-                        this.state.currentDay = { ...cloudDay, date: syncDate };
-                        this.saveLocalState(true);
-                        this.renderUI();
-                    } finally {
-                        this.isSyncing = false;
-                    }
-                } else if (localDay && localDay.lastUpdated > (cloudDay.lastUpdated || 0)) {
-                    // Push local to cloud — ensure date field is correct
-                    await setDoc(dayRef, { ...localDay, date: syncDate });
-                }
-            } else {
-                // Cloud doesn't have this day yet. 
-                // Only push local if it's not stale relative to the last known wipe.
-                const localKey = `nomblox-day-${syncDate}`;
-                const localDayRaw = localStorage.getItem(localKey);
-                if (localDayRaw) {
-                    try {
-                        const localDay = JSON.parse(localDayRaw);
-                        const lastWipe = parseInt(localStorage.getItem('nomblox-wiped-at') || '0', 10);
-                        
-                        if ((localDay.lastUpdated || 0) > lastWipe) {
-                            await setDoc(dayRef, { ...localDay, date: syncDate });
-                        } else {
-                            // This is ghost data from before a wipe — discard it
-                            console.log(`Discarding stale local data for ${syncDate}`);
-                            localStorage.removeItem(localKey);
-                            this.loadDay(syncDate); // Reset in-memory state
-                            this.renderUI();
-                        }
-                    } catch (e) {
-                        console.error("Error parsing local day during sync:", e);
-                    }
-                }
-            }
-
-            this.isLoggingIn = false;
-            this.setupSyncListeners(userRef, dayRef);
-            this.fetchHistory(); // Background load history for calendar dots
-        } catch (e) {
-            console.error("Cloud sync failed:", e);
-        }
+        // Remove redundant getDoc calls. onSnapshot provides the initial state immediately.
+        // We only need to check for a remote wipe once or via the settings listener.
+        this.setupSyncListeners(userRef, dayRef);
+        this.isLoggingIn = false;
     },
 
     handleRemoteWipe(cloudWipedAt) {
@@ -363,21 +320,28 @@ const NomBlox = {
                     } finally {
                         this.isSyncing = false;
                     }
+                } else if (localDay && (localDay.lastUpdated || 0) > (cloudData.lastUpdated || 0)) {
+                    // Push local to cloud if local is newer (initial sync case)
+                    console.log(`Local day is newer for ${listenerDate} — pushing to cloud.`);
+                    setDoc(dayRef, { ...localDay, date: listenerDate });
                 }
             } else {
-                // Document deleted remotely (e.g. via wipe or erase)
-                console.log(`Day ${listenerDate} is empty in cloud — clearing local.`);
-                this.isSyncing = true;
+                // Cloud doesn't have this day yet. 
+                const localKey = `nomblox-day-${listenerDate}`;
+                const localDayRaw = localStorage.getItem(localKey);
+                if (localDayRaw) {
                     try {
-                        this.state.currentDay = { date: listenerDate, filledBoxes: {}, activeMeal: 'breakfast' };
-                        localStorage.removeItem(`nomblox-day-${listenerDate}`);
-                        this.renderUI();
-                        this.renderHistory(); 
-                    } finally {
-                        this.isSyncing = false;
-                    }
+                        const localDay = JSON.parse(localDayRaw);
+                        const lastWipe = parseInt(localStorage.getItem('nomblox-wiped-at') || '0', 10);
+                        // Only push if it's not stale relative to the last wipe
+                        if ((localDay.lastUpdated || 0) > lastWipe) {
+                            console.log(`Cloud missing day ${listenerDate} — pushing local data.`);
+                            setDoc(dayRef, { ...localDay, date: listenerDate });
+                        }
+                    } catch (e) { console.error("Error parsing local day:", e); }
                 }
-            }, (error) => {
+            }
+        }, (error) => {
             console.error(`Day listener error for ${listenerDate}:`, error);
         });
 
@@ -466,6 +430,7 @@ const NomBlox = {
         
         const handleLogout = async () => {
             modal.classList.remove('active');
+            this.clearLocalData();
             await signOut(auth);
             location.reload();
         };
@@ -484,12 +449,18 @@ const NomBlox = {
                 "Logout", 
                 `Logged in as ${email}\n\nDo you want to log out?`,
                 async () => {
+                    this.clearLocalData();
                     await signOut(auth);
                     location.reload();
                 }
             );
         } else {
             this.showAuthError(''); // Clear previous errors
+            this.authMode = 'login';
+            this.updateAuthUI();
+            document.getElementById('auth-email').value = '';
+            document.getElementById('auth-password').value = '';
+            document.getElementById('auth-confirm-password').value = '';
             document.getElementById('auth-modal').classList.add('active');
         }
     },
@@ -506,12 +477,21 @@ const NomBlox = {
         }
     },
 
-    async handleEmailLogin(isSignup) {
+    async handleEmailLogin() {
+        if (this.authMode === 'forgot') {
+            await this.handleForgotPassword();
+            return;
+        }
+
+        const isSignup = this.authMode === 'signup';
         this.isLoggingIn = true;
         const email = document.getElementById('auth-email').value;
         const pass  = document.getElementById('auth-password').value;
+        const confirmPass = document.getElementById('auth-confirm-password').value;
 
         if (!email || !pass) { this.showAuthError('Please enter email and password.'); return; }
+        if (isSignup && !confirmPass) { this.showAuthError('Please confirm your password.'); return; }
+        if (isSignup && pass !== confirmPass) { this.showAuthError('Passwords do not match.'); return; }
         if (pass.length < 6) { this.showAuthError('Password must be at least 6 characters.'); return; }
 
         this.showAuthError('');
@@ -532,22 +512,104 @@ const NomBlox = {
         }
     },
 
+    async handleForgotPassword() {
+        const email = document.getElementById('auth-email').value;
+        if (!email) {
+            this.showAuthError('Please enter your email address first.');
+            return;
+        }
+
+        try {
+            await sendPasswordResetEmail(auth, email);
+            this.showAuthError('Password reset email sent! Check your inbox.');
+        } catch (e) {
+            console.error("Reset failed:", e);
+            let msg = e.message;
+            if (e.code === 'auth/user-not-found') msg = "No account found with this email.";
+            this.showAuthError(msg);
+        }
+    },
+
+    toggleAuthMode() {
+        if (this.authMode === 'forgot') {
+            this.authMode = 'login';
+        } else {
+            this.authMode = this.authMode === 'login' ? 'signup' : 'login';
+        }
+        this.updateAuthUI();
+    },
+
+    updateAuthUI() {
+        const isSignup = this.authMode === 'signup';
+        const isForgot = this.authMode === 'forgot';
+        
+        const submitBtn = document.getElementById('auth-submit-btn');
+        const toggleBtn = document.getElementById('auth-toggle-btn');
+        const toggleText = document.getElementById('auth-toggle-text');
+        const confirmGroup = document.getElementById('confirm-password-group');
+        const forgotPasswordContainer = document.getElementById('forgot-password-container');
+        const passwordInput = document.getElementById('auth-password');
+        const passwordGroup = passwordInput ? passwordInput.closest('.form-group') : null;
+        const googleBtn = document.getElementById('login-google');
+        const authDivider = document.getElementById('auth-divider');
+
+        if (isForgot) {
+            if (submitBtn) submitBtn.textContent = 'Send Reset Link';
+            if (toggleBtn) toggleBtn.textContent = 'Back to Login';
+            if (toggleText) toggleText.textContent = '';
+            if (passwordGroup) passwordGroup.style.display = 'none';
+            if (confirmGroup) confirmGroup.style.display = 'none';
+            if (forgotPasswordContainer) forgotPasswordContainer.style.display = 'none';
+            if (googleBtn) googleBtn.style.display = 'none';
+            if (authDivider) authDivider.style.display = 'none';
+        } else {
+            if (passwordGroup) passwordGroup.style.display = 'block';
+            if (googleBtn) googleBtn.style.display = 'flex';
+            if (authDivider) authDivider.style.display = 'flex';
+            if (submitBtn) submitBtn.textContent = isSignup ? 'Create Account' : 'Login';
+            if (toggleBtn) toggleBtn.textContent = isSignup ? 'Login' : 'Sign Up';
+            if (toggleText) toggleText.textContent = isSignup ? 'Already have an account?' : "Don't have an account?";
+            
+            if (confirmGroup) {
+                confirmGroup.style.display = isSignup ? 'block' : 'none';
+            }
+
+            if (forgotPasswordContainer) {
+                forgotPasswordContainer.style.display = isSignup ? 'none' : 'block';
+            }
+        }
+        
+        this.showAuthError(''); // Clear errors when switching
+    },
+
     updateSyncUI() {
         const btn = document.getElementById('sync-btn');
         const settingsUserInfo = document.getElementById('settings-user-info');
         const footerUserInfo = document.getElementById('footer-user-info');
         if (!btn) return;
 
-        const icon = btn.querySelector('[data-lucide]');
-        if (!icon) return;
+        // Clear existing icon or image
+        btn.innerHTML = '';
 
         if (this.user) {
             btn.classList.add('active');
-            icon.setAttribute('data-lucide', 'cloud-check');
-            btn.setAttribute('aria-label', `Synced as ${this.user.email}`);
+            btn.setAttribute('aria-label', `Logged in as ${this.user.email}`);
+            
+            if (this.user.photoURL) {
+                const img = document.createElement('img');
+                img.src = this.user.photoURL;
+                img.className = 'user-avatar';
+                img.alt = 'User Avatar';
+                btn.appendChild(img);
+            } else {
+                const icon = document.createElement('i');
+                icon.setAttribute('data-lucide', 'user');
+                btn.appendChild(icon);
+            }
             
             if (settingsUserInfo) {
-                settingsUserInfo.innerHTML = `<i data-lucide="user"></i><span>${this.user.email}</span>`;
+                const email = this.user.email || 'Cloud User';
+                settingsUserInfo.innerHTML = `<i data-lucide="user"></i><span>${email}</span>`;
                 settingsUserInfo.style.display = 'flex';
             }
             if (footerUserInfo) {
@@ -555,8 +617,10 @@ const NomBlox = {
             }
         } else {
             btn.classList.remove('active');
-            icon.setAttribute('data-lucide', 'cloud-off');
-            btn.setAttribute('aria-label', 'Sync to Cloud');
+            const icon = document.createElement('i');
+            icon.setAttribute('data-lucide', 'user'); // Changed from cloud-off to user
+            btn.appendChild(icon);
+            btn.setAttribute('aria-label', 'Login / Sync');
             
             if (settingsUserInfo) {
                 settingsUserInfo.style.display = 'none';
@@ -567,6 +631,23 @@ const NomBlox = {
         }
         
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    clearLocalData() {
+        console.log("Clearing all local data...");
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('nomblox-')) {
+                localStorage.removeItem(key);
+            }
+        });
+        // Reset in-memory state to defaults
+        this.state = {
+            settings: { dailyGoal: 2000, increment: 50 },
+            currentDay: { date: this.getTodayDate(), filledBoxes: {}, activeMeal: 'breakfast' },
+            history: [],
+            lastUpdated: 0
+        };
+        this.historyDates = new Set();
     },
 
     getTodayDate() {
@@ -775,14 +856,18 @@ const NomBlox = {
         });
     },
 
-    async fetchHistory() {
+    async fetchHistory(force = false) {
         if (!this.user) {
             // Still render stats panel with local history data
             this.renderStatsPanel();
             return;
         }
 
-        try {
+        // Optimization: If we already have history and not forcing, skip
+        if (this.state.history.length > 0 && !force) {
+            this.renderStatsPanel();
+            return;
+        }
             const daysRef = collection(db, "users", this.user.uid, "days");
             const q = query(daysRef, orderBy("date", "desc"), limit(500));
             const querySnapshot = await getDocs(q);
@@ -1546,8 +1631,12 @@ const NomBlox = {
                 }
             });
         });
-        document.getElementById('login-email').addEventListener('click', () => this.handleEmailLogin(false));
-        document.getElementById('signup-email').addEventListener('click', () => this.handleEmailLogin(true));
+        document.getElementById('auth-submit-btn').addEventListener('click', () => this.handleEmailLogin());
+        document.getElementById('auth-toggle-btn').addEventListener('click', () => this.toggleAuthMode());
+        document.getElementById('forgot-password-btn').addEventListener('click', () => {
+            this.authMode = 'forgot';
+            this.updateAuthUI();
+        });
 
         // Meal selector
         document.querySelectorAll('.meal-btn').forEach(btn => {
@@ -1664,7 +1753,7 @@ const NomBlox = {
 
         const historyModal = document.getElementById('history-modal');
         document.getElementById('history-btn').addEventListener('click', () => {
-            this.fetchHistory();
+            this.fetchHistory(true); // Force fresh history when opening stats
             historyModal.classList.add('active');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });

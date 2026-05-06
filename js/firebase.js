@@ -10,7 +10,8 @@ import {
     signInWithEmailAndPassword, 
     createUserWithEmailAndPassword, 
     onAuthStateChanged, 
-    signOut 
+    signOut,
+    sendPasswordResetEmail 
 } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -43,7 +44,7 @@ const providers = {
 export { 
     db, auth, providers, 
     signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-    onAuthStateChanged, signOut, 
+    onAuthStateChanged, signOut, sendPasswordResetEmail,
     doc, getDoc, setDoc, onSnapshot, deleteDoc,
     collection, query, orderBy, limit, getDocs
 };
