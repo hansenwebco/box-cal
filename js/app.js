@@ -139,9 +139,6 @@ const BoxCal = {
         // Save settings
         localStorage.setItem('box-cal-settings', JSON.stringify(this.state.settings));
         
-        // Update timestamp before saving
-        this.state.lastUpdated = Date.now();
-
         // CRITICAL: viewingDate is the single source of truth for which day slot we write to.
         // Always force currentDay.date to match before saving, preventing ghost documents.
         const saveDate = this.viewingDate;
@@ -307,7 +304,9 @@ const BoxCal = {
 
         // 1. Day Listener
         this.unsubscribeDay = onSnapshot(dayRef, (snap) => {
-            if (this.isSyncing) return;
+            // REMOVED: global isSyncing check here as it can cause race conditions 
+            // between different listeners (e.g. settings update blocking day update).
+            // We rely on snap.metadata.hasPendingWrites to ignore our own echoes.
 
             // Ignore if this is a local change that hasn't been confirmed by the server yet
             if (snap.metadata.hasPendingWrites) return;
@@ -342,10 +341,8 @@ const BoxCal = {
                 }
             } else {
                 // Document deleted remotely (e.g. via wipe or erase)
-                const lastWipe = parseInt(localStorage.getItem('box-cal-wiped-at') || '0', 10);
-                if ((this.state.currentDay.lastUpdated || 0) <= lastWipe) {
-                    console.log(`Day ${listenerDate} is empty in cloud and local is stale — clearing.`);
-                    this.isSyncing = true;
+                console.log(`Day ${listenerDate} is empty in cloud — clearing local.`);
+                this.isSyncing = true;
                     try {
                         this.state.currentDay = { date: listenerDate, filledBoxes: {}, activeMeal: 'breakfast' };
                         localStorage.removeItem(`box-cal-day-${listenerDate}`);
@@ -355,14 +352,13 @@ const BoxCal = {
                         this.isSyncing = false;
                     }
                 }
-            }
-        }, (error) => {
+            }, (error) => {
             console.error(`Day listener error for ${listenerDate}:`, error);
         });
 
         // 2. Settings Listener
         this.unsubscribeSettings = onSnapshot(userRef, (snap) => {
-            if (this.isSyncing) return;
+            // REMOVED: global isSyncing check here to prevent race conditions.
             if (snap.metadata.hasPendingWrites) return;
 
             if (!snap.exists()) return;
