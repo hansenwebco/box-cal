@@ -1625,7 +1625,7 @@ const NomBlox = {
         }
 
         if (this.state.settings.haptic !== false && navigator.vibrate) {
-            navigator.vibrate(12);
+            navigator.vibrate([15]);
         }
     },
 
@@ -1726,7 +1726,7 @@ const NomBlox = {
                 this.saveState();
                 this.syncMealButtons();
                 if (this.state.settings.haptic !== false && navigator.vibrate) {
-                    navigator.vibrate(8);
+                    navigator.vibrate([10]);
                 }
             });
         });
@@ -1782,6 +1782,15 @@ const NomBlox = {
             document.getElementById('haptic-enabled').checked = this.state.settings.haptic !== false;
             modal.classList.add('active');
             if (typeof lucide !== 'undefined') lucide.createIcons();
+        });
+
+        document.getElementById('test-haptic').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (navigator.vibrate) {
+                navigator.vibrate([20]);
+            } else {
+                alert("Haptic API not supported or blocked in this browser.");
+            }
         });
 
         // Live theme preview
