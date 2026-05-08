@@ -30,13 +30,8 @@
     background: var(--accent);
     box-shadow: 0 0 15px var(--accent), 0 0 30px var(--accent)44;
     border: none;
-    animation: firefly-pulse 3s infinite ease-in-out;
 }
 
-@keyframes firefly-pulse {
-    0%, 100% { opacity: 0.8; transform: scale(0.95); }
-    50% { opacity: 1; transform: scale(1.05); }
-}
 
 .theme-firefly .progress-bar {
     filter: blur(2px);
@@ -47,3 +42,4 @@
     color: var(--accent);
     text-shadow: 0 0 10px var(--accent);
 }
+

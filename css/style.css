@@ -2186,3 +2186,70 @@ footer {
         font-size: 1.6rem;
     }
 }
+
+/* ── Custom Switch ──────────────────────────────── */
+.form-group.toggle-group {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    background: hsla(0, 0%, 100%, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    margin-top: 4px;
+}
+
+.form-group.toggle-group label {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-main);
+    font-weight: 700;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--surface-light);
+    transition: var(--transition);
+    border-radius: 24px;
+    border: 1px solid var(--glass-border);
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: var(--transition);
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input:checked + .slider {
+    background-color: var(--accent);
+    border-color: transparent;
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}

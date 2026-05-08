@@ -11,10 +11,10 @@
     --glass-border: hsla(100, 30%, 15%, 0.2);
     --glass-shadow: 4px 4px 0px hsla(100, 30%, 15%, 0.2);
     
-    --breakfast: hsl(100, 30%, 15%);  /* Darkest */
-    --lunch: hsl(95, 25%, 25%);
-    --dinner: hsl(90, 20%, 35%);
-    --snacks: hsl(85, 15%, 45%);     /* Lightest green */
+    --breakfast: #0f380f;  /* Darkest Green */
+    --lunch: #306230;      /* Dark Green */
+    --dinner: #8bac0f;     /* Light Green */
+    --snacks: #ffffff;     /* White (GameBoy highlights) */
 
     font-family: 'Press Start 2P', cursive;
 }

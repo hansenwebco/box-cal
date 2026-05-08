@@ -19,7 +19,8 @@ const NomBlox = {
         settings: {
             dailyGoal: 2000,
             increment: 50,
-            theme: 'default'
+            theme: 'default',
+            haptic: true
         },
         currentDay: {
             date: '',
@@ -657,7 +658,7 @@ const NomBlox = {
         });
         // Reset in-memory state to defaults
         this.state = {
-            settings: { dailyGoal: 2000, increment: 50 },
+            settings: { dailyGoal: 2000, increment: 50, haptic: true },
             currentDay: { date: this.getTodayDate(), filledBoxes: {}, activeMeal: 'breakfast' },
             history: [],
             lastUpdated: 0
@@ -1623,7 +1624,9 @@ const NomBlox = {
             boxes[index].classList.add('pop');
         }
 
-        if (navigator.vibrate) navigator.vibrate(12);
+        if (this.state.settings.haptic !== false && navigator.vibrate) {
+            navigator.vibrate(12);
+        }
     },
 
     resetDay() {
@@ -1722,6 +1725,9 @@ const NomBlox = {
                 this.state.currentDay.activeMeal = btn.dataset.meal;
                 this.saveState();
                 this.syncMealButtons();
+                if (this.state.settings.haptic !== false && navigator.vibrate) {
+                    navigator.vibrate(8);
+                }
             });
         });
 
@@ -1773,6 +1779,7 @@ const NomBlox = {
             goalInput.value = this.state.settings.dailyGoal;
             document.getElementById('cal-increment').value = this.state.settings.increment;
             document.getElementById('app-theme').value = this.state.settings.theme || 'default';
+            document.getElementById('haptic-enabled').checked = this.state.settings.haptic !== false;
             modal.classList.add('active');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
@@ -1809,6 +1816,7 @@ const NomBlox = {
             const newGoal = parseInt(goalInput.value);
             const newInc = parseInt(document.getElementById('cal-increment').value);
             const newTheme = document.getElementById('app-theme').value;
+            const newHaptic = document.getElementById('haptic-enabled').checked;
 
             if (newGoal > 0 && newInc > 0) {
                 const oldInc = this.state.settings.increment;
@@ -1833,6 +1841,7 @@ const NomBlox = {
                 this.state.settings.dailyGoal = newGoal;
                 this.state.settings.increment = newInc;
                 this.state.settings.theme = newTheme;
+                this.state.settings.haptic = newHaptic;
                 this.saveState();
                 this.applyTheme();
                 this.renderUI();
