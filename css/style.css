@@ -26,6 +26,25 @@
     --radius-md: 16px;
     --radius-lg: 24px;
     --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --font-main: 'Outfit', sans-serif;
+    --font-logo: 'Outfit', sans-serif;
+    --box-border-style: solid;
+}
+
+.theme-pixel {
+    --font-main: 'Press Start 2P', cursive;
+    --font-logo: 'Press Start 2P', cursive;
+    --radius-sm: 0px;
+    --radius-md: 0px;
+    --radius-lg: 0px;
+    --glass-bg: var(--surface);
+    --glass-border: hsla(0, 0%, 100%, 0.15);
+    --glass-shadow: 4px 4px 0px rgba(0, 0, 0, 1);
+    --transition: none;
+    --box-border-style: solid;
+    --font-size-adjust: 0.75;
+    /* Scale down pixel text by 25% */
 }
 
 * {
@@ -41,7 +60,8 @@ body {
 }
 
 body {
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font-main);
+    font-size: calc(1rem * var(--font-size-adjust, 1));
     background-color: var(--bg-dark);
     color: var(--text-main);
     min-height: 100vh;
@@ -86,7 +106,8 @@ header {
 }
 
 .logo-text {
-    font-size: 2.1rem;
+    font-family: var(--font-logo);
+    font-size: clamp(1.2rem, 5vw, 2.1rem);
     font-weight: 600;
     letter-spacing: -1.2px;
     line-height: 1;
@@ -97,8 +118,12 @@ header {
 .logo-text span {
     font-weight: 900;
     color: var(--accent);
-    /* Subtle glow instead of gradient shading */
-    text-shadow: 0 0 20px hsla(200, 85%, 55%, 0.4);
+    /* No soft glows in pixel mode */
+    text-shadow: none;
+}
+
+.theme-pixel .logo-text span {
+    text-shadow: 3px 3px 0px rgba(0, 0, 0, 0.8);
 }
 
 .date-display {
@@ -184,7 +209,7 @@ header {
     border: 1px solid var(--glass-border) !important;
     box-shadow: var(--glass-shadow) !important;
     border-radius: var(--radius-md) !important;
-    font-family: 'Outfit', sans-serif !important;
+    font-family: var(--font-main) !important;
 }
 
 .flatpickr-months .flatpickr-month {
@@ -240,8 +265,8 @@ header {
 /* Days */
 .flatpickr-day {
     color: var(--text-main) !important;
-    border-radius: 8px !important;
-    font-family: 'Outfit', sans-serif !important;
+    border-radius: var(--radius-sm) !important;
+    font-family: var(--font-main) !important;
 }
 
 .flatpickr-day.flatpickr-disabled,
@@ -426,7 +451,7 @@ header {
 }
 
 .stat-value {
-    font-size: 2.25rem;
+    font-size: clamp(1.2rem, 6vw, 2.25rem);
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     line-height: 1;
@@ -440,7 +465,11 @@ header {
 
 .stat-value.over-limit {
     color: var(--dinner);
-    text-shadow: 0 0 12px hsla(28, 92%, 55%, 0.4);
+    text-shadow: none;
+}
+
+.theme-pixel .stat-value.over-limit {
+    text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.5);
 }
 
 .stat-divider {
@@ -526,6 +555,11 @@ header {
     justify-content: center;
 }
 
+.theme-pixel .meal-btn {
+    padding: 10px 4px;
+    gap: 4px;
+}
+
 /* Row 1: dot + label side by side */
 .meal-btn .meal-header {
     display: flex;
@@ -549,9 +583,30 @@ header {
     line-height: 1;
 }
 
+/* Shorten labels for Pixel theme to prevent overflow */
+.theme-pixel #meal-breakfast .meal-label {
+    font-size: 0;
+}
+
+.theme-pixel #meal-breakfast .meal-label::after {
+    content: 'BREAK';
+    font-size: 0.72rem;
+    visibility: visible;
+}
+
+.theme-pixel #meal-snacks .meal-label {
+    font-size: 0;
+}
+
+.theme-pixel #meal-snacks .meal-label::after {
+    content: 'SNACK';
+    font-size: 0.72rem;
+    visibility: visible;
+}
+
 /* Row 2: calorie total */
 .meal-btn .meal-cals {
-    font-size: 0.9rem;
+    font-size: clamp(0.6rem, 2vw, 0.9rem);
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     line-height: 1;
@@ -584,6 +639,14 @@ header {
     background: hsla(200, 85%, 55%, 0.12);
 }
 
+.theme-pixel .meal-dot {
+    display: none;
+}
+
+.theme-pixel .meal-header {
+    gap: 0;
+}
+
 #meal-lunch.active {
     border-color: var(--lunch);
     color: var(--lunch);
@@ -602,6 +665,37 @@ header {
     background: hsla(290, 60%, 62%, 0.12);
 }
 
+.settings-user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background: var(--surface-light);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.settings-user-info span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.theme-pixel .settings-user-info {
+    font-size: 0.45rem;
+    padding: 8px;
+}
+
+.theme-pixel .meal-btn {
+    box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.5);
+}
+
+.theme-pixel .meal-btn.active {
+    box-shadow: 3px 3px 0px var(--accent);
+}
+
 .meal-btn:active {
     transform: scale(0.94);
 }
@@ -616,7 +710,7 @@ header {
 .box {
     aspect-ratio: 1;
     background: var(--surface);
-    border: 1.5px solid var(--glass-border);
+    border: 1.5px var(--box-border-style) var(--glass-border);
     border-radius: var(--radius-sm);
     cursor: pointer;
     transition: var(--transition);
@@ -1015,6 +1109,15 @@ header {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-muted);
+    background: var(--surface-light);
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.theme-pixel .history-month-days {
+    font-size: 0.45rem;
+    padding: 3px 5px;
+}
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1133,18 +1236,23 @@ header {
 
 .history-month-header {
     display: flex;
-    align-items: center;
     justify-content: space-between;
+    align-items: center;
     width: 100%;
-    padding: 16px 8px;
-    background: none;
+    padding: 14px 16px;
+    background: hsla(0, 0%, 100%, 0.03);
     border: none;
-    color: var(--text-main);
-    font-family: inherit;
+    border-bottom: 1px solid var(--glass-border);
     cursor: pointer;
     transition: var(--transition);
+    color: var(--text-main);
+    gap: 12px;
 }
 
+.theme-pixel .history-month-header {
+    padding: 10px;
+    gap: 4px;
+}
 .history-month-header:hover {
     background: hsla(0, 0%, 100%, 0.03);
     border-radius: var(--radius-sm);
@@ -1173,14 +1281,23 @@ header {
 }
 
 .history-month-label {
-    font-size: 0.85rem;
-    font-weight: 700;
+    font-size: 1.1rem;
+    font-weight: 800;
+}
+
+.theme-pixel .history-month-label {
+    font-size: 0.65rem;
+    line-height: 1.4;
 }
 
 .history-month-summary {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
+}
+
+.theme-pixel .history-month-summary {
+    gap: 4px;
 }
 
 .history-month-days {
@@ -1196,9 +1313,14 @@ header {
 }
 
 .history-month-avg {
-    font-size: 0.72rem;
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--accent);
+}
+
+.theme-pixel .history-month-avg {
+    font-size: 0.5rem;
+}
     font-variant-numeric: tabular-nums;
 }
 
@@ -1241,14 +1363,26 @@ header {
 .history-item-meta {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    margin-top: 4px;
 }
 
+.theme-pixel .history-item-meta {
+    gap: 4px;
+    margin-top: 6px;
+}
 .history-goal-badge {
-    font-size: 0.6rem;
+    font-size: 0.68rem;
     font-weight: 800;
-    padding: 1px 6px;
+    text-transform: uppercase;
+    padding: 3px 8px;
     border-radius: 4px;
+}
+
+.theme-pixel .history-goal-badge {
+    font-size: 0.45rem;
+    padding: 2px 4px;
+}
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -1314,7 +1448,8 @@ header {
     width: 100%;
     max-width: 400px;
     border-radius: var(--radius-lg);
-    padding: 0; /* Header and body handle all padding */
+    padding: 0;
+    /* Header and body handle all padding */
     border: 1px solid var(--glass-border);
     transform: translateY(20px);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1450,6 +1585,10 @@ header {
     font-weight: 600;
 }
 
+.theme-pixel .form-group label {
+    font-size: 0.5rem;
+}
+
 .settings-user-info {
     background: hsla(0, 0%, 100%, 0.03);
     border: 1px solid var(--glass-border);
@@ -1466,6 +1605,13 @@ header {
 .settings-user-info span {
     color: var(--text-main);
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.theme-pixel .settings-user-info {
+    font-size: 0.6rem;
 }
 
 .settings-user-info i {
@@ -1634,7 +1780,8 @@ header {
         font-size: 0.75rem;
     }
 
-    #prev-day, #next-day {
+    #prev-day,
+    #next-day {
         padding: 6px;
     }
 
@@ -1642,7 +1789,8 @@ header {
         gap: 6px;
     }
 
-    #settings-btn, #history-btn {
+    #settings-btn,
+    #history-btn {
         width: 38px;
         height: 38px;
     }
@@ -1656,7 +1804,7 @@ header {
     .logo-text {
         font-size: 1.5rem;
     }
-    
+
     .header-content {
         align-items: flex-start;
     }
@@ -1757,6 +1905,11 @@ input[type="number"] {
 .btn-primary {
     background: var(--accent);
     color: white;
+}
+
+.theme-pixel .btn {
+    font-size: 0.5rem;
+    padding: 10px;
 }
 
 .btn-primary:hover {

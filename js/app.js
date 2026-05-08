@@ -3,10 +3,10 @@
  * Meal-based calorie tracking with color-coded boxes.
  */
 
-import { 
+import {
     db, auth, providers, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword,
     onAuthStateChanged, signOut, doc, getDoc, setDoc, onSnapshot, deleteDoc,
-    collection, query, orderBy, limit, getDocs, sendPasswordResetEmail 
+    collection, query, orderBy, limit, getDocs, sendPasswordResetEmail
 } from './firebase.js';
 
 const STATE_VERSION = 3; // bump when schema changes
@@ -18,7 +18,8 @@ const NomBlox = {
     state: {
         settings: {
             dailyGoal: 2000,
-            increment: 50
+            increment: 50,
+            theme: 'default'
         },
         currentDay: {
             date: '',
@@ -51,12 +52,13 @@ const NomBlox = {
         this.migrateLegacyData();
         this.currentDate = this.getTodayDate();
         this.viewingDate = this.currentDate;
-        
+
         this.loadLocalState();
         this.renderUI();
         this.setupEventListeners();
         this.setupAuthListener();
         this.setupModalScrollLock();
+        this.applyTheme();
     },
 
     /** Lock body scroll whenever any .modal has .active */
@@ -86,7 +88,7 @@ const NomBlox = {
         onAuthStateChanged(auth, (user) => {
             this.user = user;
             this.updateSyncUI();
-            
+
             if (user) {
                 console.log("Auth state changed: User logged in", user.email);
                 this.startCloudSync();
@@ -134,7 +136,7 @@ const NomBlox = {
     loadDay(date) {
         const key = `nomblox-day-${date}`;
         const savedDay = localStorage.getItem(key);
-        
+
         if (savedDay) {
             try {
                 this.state.currentDay = JSON.parse(savedDay);
@@ -147,7 +149,7 @@ const NomBlox = {
         } else {
             this.state.currentDay = { date: date, filledBoxes: {}, activeMeal: 'breakfast' };
         }
-        
+
         // Ensure some sanity
         if (!this.state.currentDay.filledBoxes) this.state.currentDay.filledBoxes = {};
         if (!this.state.currentDay.activeMeal) this.state.currentDay.activeMeal = 'breakfast';
@@ -157,10 +159,10 @@ const NomBlox = {
         if (!skipTimestamp) {
             this.state.lastUpdated = Date.now();
         }
-        
+
         // Save settings
         localStorage.setItem('nomblox-settings', JSON.stringify(this.state.settings));
-        
+
         // CRITICAL: viewingDate is the single source of truth for which day slot we write to.
         // Always force currentDay.date to match before saving, preventing ghost documents.
         const saveDate = this.viewingDate;
@@ -172,18 +174,18 @@ const NomBlox = {
         if (!skipTimestamp) {
             this.state.currentDay.lastUpdated = this.state.lastUpdated;
         }
-        
+
         const dayKey = `nomblox-day-${saveDate}`;
         localStorage.setItem(dayKey, JSON.stringify(this.state.currentDay));
         localStorage.setItem('nomblox-last-updated', this.state.lastUpdated);
-        
+
         // Save history (cache)
         localStorage.setItem('nomblox-history', JSON.stringify(this.state.history));
-        
+
         // Update history dates for calendar dots
         const count = Object.keys(this.state.currentDay.filledBoxes).length;
         if (this.fp) this.fp.redraw();
-        
+
         // Update in-memory history for stats/history modal consistency
         this.updateHistoryEntry(saveDate, count);
 
@@ -195,7 +197,7 @@ const NomBlox = {
     updateHistoryEntry(date, boxCount) {
         const calories = boxCount * this.state.settings.increment;
         const index = this.state.history.findIndex(h => h.date === date);
-        
+
         // Update history dates for calendar dots
         if (calories > 0) {
             this.historyDates.add(date);
@@ -211,7 +213,7 @@ const NomBlox = {
             this.state.history.push({
                 date: date,
                 calories: calories,
-                meals: {} 
+                meals: {}
             });
             this.state.history.sort((a, b) => b.date.localeCompare(a.date));
         }
@@ -219,7 +221,7 @@ const NomBlox = {
 
     async saveState() {
         this.saveLocalState();
-        
+
         if (this.user && !this.isSyncing) {
             // Snapshot viewingDate at the time of call so async doesn't race with date navigation
             const saveDate = this.viewingDate;
@@ -269,7 +271,7 @@ const NomBlox = {
         const lastSeenWipe = parseInt(localStorage.getItem('nomblox-wiped-at') || '0', 10);
         if (cloudWipedAt > lastSeenWipe) {
             console.log('Remote wipe detected — resetting local state.');
-            
+
             // Prevent any outgoing saves while we are wiping
             this.isSyncing = true;
 
@@ -279,11 +281,11 @@ const NomBlox = {
                     localStorage.removeItem(key);
                 }
             });
-            
+
             // Force a clean state before reload just in case
             this.state.currentDay = { date: this.getTodayDate(), filledBoxes: {}, activeMeal: 'breakfast' };
             this.state.history = [];
-            
+
             location.reload();
             return true;
         }
@@ -398,7 +400,7 @@ const NomBlox = {
         const useServerBtn = document.getElementById('use-server-btn');
         const useLocalBtn = document.getElementById('use-local-btn');
         const logoutBtn = document.getElementById('conflict-logout');
-        
+
         const localUpdatedEl = document.getElementById('local-updated');
         const serverUpdatedEl = document.getElementById('server-updated');
         const localOption = document.getElementById('local-conflict-option');
@@ -406,9 +408,9 @@ const NomBlox = {
 
         const formatTime = (ts) => {
             if (!ts) return 'Never';
-            return new Date(ts).toLocaleString([], { 
-                month: 'short', day: 'numeric', 
-                hour: '2-digit', minute: '2-digit' 
+            return new Date(ts).toLocaleString([], {
+                month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
             });
         };
 
@@ -427,7 +429,7 @@ const NomBlox = {
         } else if (serverTs > localTs) {
             serverOption.classList.add('newest');
         }
-        
+
         const handleChoice = async (useServer) => {
             modal.classList.remove('active');
             if (useServer) {
@@ -440,18 +442,18 @@ const NomBlox = {
             this.renderUI();
             this.startCloudSync(); // Fix #5: was calling removed setupRealtimeSync
         };
-        
+
         const handleLogout = async () => {
             modal.classList.remove('active');
             this.clearLocalData();
             await signOut(auth);
             location.reload();
         };
-        
+
         useServerBtn.onclick = () => handleChoice(true);
         useLocalBtn.onclick = () => handleChoice(false);
         logoutBtn.onclick = handleLogout;
-        
+
         modal.classList.add('active');
     },
 
@@ -459,7 +461,7 @@ const NomBlox = {
         if (this.user) {
             const email = this.user.email || "Anonymous";
             this.showConfirm(
-                "Logout", 
+                "Logout",
                 `Logged in as ${email}\n\nDo you want to log out?`,
                 async () => {
                     this.clearLocalData();
@@ -481,7 +483,7 @@ const NomBlox = {
     showAuthError(msg) {
         const errorEl = document.getElementById('auth-error');
         if (!errorEl) return;
-        
+
         if (msg) {
             errorEl.textContent = msg;
             errorEl.style.display = 'block';
@@ -499,7 +501,7 @@ const NomBlox = {
         const isSignup = this.authMode === 'signup';
         this.isLoggingIn = true;
         const email = document.getElementById('auth-email').value;
-        const pass  = document.getElementById('auth-password').value;
+        const pass = document.getElementById('auth-password').value;
         const confirmPass = document.getElementById('auth-confirm-password').value;
 
         if (!email || !pass) { this.showAuthError('Please enter email and password.'); return; }
@@ -555,7 +557,7 @@ const NomBlox = {
     updateAuthUI() {
         const isSignup = this.authMode === 'signup';
         const isForgot = this.authMode === 'forgot';
-        
+
         const submitBtn = document.getElementById('auth-submit-btn');
         const toggleBtn = document.getElementById('auth-toggle-btn');
         const toggleText = document.getElementById('auth-toggle-text');
@@ -582,7 +584,7 @@ const NomBlox = {
             if (submitBtn) submitBtn.textContent = isSignup ? 'Create Account' : 'Login';
             if (toggleBtn) toggleBtn.textContent = isSignup ? 'Login' : 'Sign Up';
             if (toggleText) toggleText.textContent = isSignup ? 'Already have an account?' : "Don't have an account?";
-            
+
             if (confirmGroup) {
                 confirmGroup.style.display = isSignup ? 'block' : 'none';
             }
@@ -591,7 +593,7 @@ const NomBlox = {
                 forgotPasswordContainer.style.display = isSignup ? 'none' : 'block';
             }
         }
-        
+
         this.showAuthError(''); // Clear errors when switching
     },
 
@@ -607,7 +609,7 @@ const NomBlox = {
         if (this.user) {
             btn.classList.add('active');
             btn.setAttribute('aria-label', `Logged in as ${this.user.email}`);
-            
+
             if (this.user.photoURL) {
                 const img = document.createElement('img');
                 img.src = this.user.photoURL;
@@ -619,7 +621,7 @@ const NomBlox = {
                 icon.setAttribute('data-lucide', 'user');
                 btn.appendChild(icon);
             }
-            
+
             if (settingsUserInfo) {
                 const email = this.user.email || 'Cloud User';
                 settingsUserInfo.innerHTML = `<i data-lucide="user"></i><span>${email}</span>`;
@@ -634,7 +636,7 @@ const NomBlox = {
             icon.setAttribute('data-lucide', 'user'); // Changed from cloud-off to user
             btn.appendChild(icon);
             btn.setAttribute('aria-label', 'Login / Sync');
-            
+
             if (settingsUserInfo) {
                 settingsUserInfo.style.display = 'none';
             }
@@ -642,7 +644,7 @@ const NomBlox = {
                 footerUserInfo.textContent = '';
             }
         }
-        
+
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
@@ -690,10 +692,10 @@ const NomBlox = {
         try {
             const userRef = doc(db, "users", this.user.uid);
             const userSnap = await getDoc(userRef);
-            
+
             const daysRef = collection(db, "users", this.user.uid, "days");
             const daysSnap = await getDocs(query(daysRef, orderBy("date", "desc"), limit(10)));
-            
+
             const serverData = {
                 user: userSnap.exists() ? userSnap.data() : "No user doc",
                 recentDays: []
@@ -728,7 +730,7 @@ const NomBlox = {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         const date = new Date().toISOString().split('T')[0];
-        
+
         a.href = url;
         a.download = `nomblox-backup-${date}.json`;
         document.body.appendChild(a);
@@ -750,7 +752,7 @@ const NomBlox = {
         reader.onload = (event) => {
             try {
                 const backup = JSON.parse(event.target.result);
-                
+
                 // Basic validation
                 if (!backup.data || typeof backup.data !== 'object') {
                     throw new Error("Invalid backup format: Missing data object.");
@@ -783,7 +785,7 @@ const NomBlox = {
                                     const dayObj = JSON.parse(value);
                                     dayObj.lastUpdated = newSyncTime;
                                     value = JSON.stringify(dayObj);
-                                } catch(e) {
+                                } catch (e) {
                                     console.warn("Failed to update timestamp for day key:", key);
                                 }
                             }
@@ -825,14 +827,14 @@ const NomBlox = {
                         localStorage.setItem('nomblox-wiped-at', wipedAt);
 
                         // Signal all other devices to wipe immediately
-                        await setDoc(doc(db, "users", this.user.uid), { 
+                        await setDoc(doc(db, "users", this.user.uid), {
                             lastUpdated: wipedAt,
                             wipedAt: wipedAt
                         }, { merge: true });
 
                         const daysRef = collection(db, "users", this.user.uid, "days");
                         const daysSnap = await getDocs(daysRef);
-                        
+
                         // Fix #6: Delete in chunks of 500 to respect Firestore limits
                         const allDocs = daysSnap.docs;
                         for (let i = 0; i < allDocs.length; i += 500) {
@@ -850,7 +852,7 @@ const NomBlox = {
                         localStorage.removeItem(key);
                     }
                 });
-                
+
                 // Ensure wipedAt is definitely set (it was set above, but just in case of non-user mode)
                 localStorage.setItem('nomblox-wiped-at', wipedAt);
 
@@ -899,27 +901,27 @@ const NomBlox = {
             // Users with more than 500 tracked days will see their most recent 500.
             const q = query(daysRef, orderBy("date", "desc"), limit(500));
             const querySnapshot = await getDocs(q);
-            
+
             const lastWipe = parseInt(localStorage.getItem('nomblox-wiped-at') || '0', 10);
             const historyMap = new Map();
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                
+
                 // If this data was updated before the last wipe, ignore it (likely cached stale data)
                 if (lastWipe > 0 && (data.lastUpdated || 0) <= lastWipe) return;
 
                 const date = data.date || doc.id; // Use document ID as fallback
                 const filledBoxes = data.filledBoxes || {};
                 const inc = this.state.settings.increment || 50;
-                
+
                 // Per-meal calorie counts
                 const meals = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
                 Object.values(filledBoxes).forEach(meal => {
                     if (meals[meal] !== undefined) meals[meal] += inc;
                 });
-                
+
                 const totalCals = Object.values(meals).reduce((a, b) => a + b, 0);
-                
+
                 const existing = historyMap.get(date);
                 if (!existing || (data.lastUpdated || 0) > (existing._lastUpdated || 0)) {
                     historyMap.set(date, {
@@ -941,7 +943,7 @@ const NomBlox = {
             this.updateHistoryDates();
             this.saveLocalState(true);
             this._historyFetchedAt = Date.now(); // Mark cache as fresh
-            
+
             this.renderStatsPanel();
         } catch (e) {
             console.error("Error fetching history:", e);
@@ -972,14 +974,14 @@ const NomBlox = {
 
     renderStatsPanel() {
         const filtered = this.getFilteredHistory();
-        
+
         this.renderStatsOverview(filtered);
         this.renderStatsChart(filtered);
         this.renderMealBreakdown(filtered);
         this.renderStatsRecords(filtered);
         this.renderHistory();
         this.setupRangeToggle();
-        
+
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
@@ -997,17 +999,17 @@ const NomBlox = {
 
     calculateStreak(history) {
         if (history.length === 0) return 0;
-        
+
         // Sort by date descending
         const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
         let streak = 0;
         const today = this.getTodayDate();
         let checkDate = new Date(today + 'T12:00:00');
-        
+
         for (const entry of sorted) {
             const entryDate = entry.date;
             const expected = checkDate.toISOString().split('T')[0];
-            
+
             if (entryDate === expected && entry.calories > 0) {
                 streak++;
                 checkDate.setDate(checkDate.getDate() - 1);
@@ -1016,16 +1018,16 @@ const NomBlox = {
                 break;
             }
         }
-        
+
         return streak;
     },
 
     renderStatsChart(history) {
         const canvas = document.getElementById('stats-chart');
         if (!canvas) return;
-        
+
         const ctx = canvas.getContext('2d');
-        
+
         // Destroy previous chart if exists
         if (this.statsChart) {
             this.statsChart.destroy();
@@ -1034,7 +1036,7 @@ const NomBlox = {
 
         // history is already filtered and sorted ascending by caller
         const filtered = history;
-        
+
         if (filtered.length === 0) {
             this.statsChart = null;
             // Clear the canvas if no data
@@ -1234,11 +1236,11 @@ const NomBlox = {
             // Remove old listeners by cloning
             const newBtn = btn.cloneNode(true);
             btn.parentNode.replaceChild(newBtn, btn);
-            
+
             newBtn.addEventListener('click', () => {
                 document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 newBtn.classList.add('active');
-                
+
                 const range = newBtn.dataset.range;
                 this.statsRange = range === 'all' ? 'all' : parseInt(range);
                 const filtered = this.getFilteredHistory();
@@ -1312,11 +1314,11 @@ const NomBlox = {
             entries.forEach(entry => {
                 const d = new Date(entry.date + 'T12:00:00');
                 const str = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-                
+
                 const isOver = entry.calories > goal;
                 const badgeClass = isOver ? 'over' : 'under';
                 const badgeText = isOver ? `+${(entry.calories - goal).toLocaleString()}` : 'On track';
-                
+
                 // Build meal dots
                 let mealDotsHtml = '';
                 if (entry.meals) {
@@ -1334,7 +1336,7 @@ const NomBlox = {
                     });
                     mealDotsHtml += '</div>';
                 }
-                
+
                 const item = document.createElement('div');
                 item.className = 'history-item clickable';
                 item.innerHTML = `
@@ -1382,6 +1384,20 @@ const NomBlox = {
         this.syncMealButtons();
     },
 
+    applyTheme() {
+        const theme = this.state.settings.theme || 'default';
+        document.body.classList.remove('theme-pixel');
+
+        if (theme === 'pixel') {
+            document.body.classList.add('theme-pixel');
+        }
+
+        // Update Chart.js defaults for the theme if needed
+        if (this.statsChart) {
+            this.renderStatsChart(this.getFilteredHistory());
+        }
+    },
+
     updateDateDisplay() {
         const label = document.getElementById('current-date-label');
         if (!label) return;
@@ -1398,7 +1414,7 @@ const NomBlox = {
         const d = new Date(this.viewingDate + 'T12:00:00');
         d.setDate(d.getDate() + offset);
         const newDate = d.toISOString().split('T')[0];
-        
+
         // Don't go into the future
         if (newDate > this.currentDate) return;
 
@@ -1408,24 +1424,24 @@ const NomBlox = {
         }
         this.loadDay(this.viewingDate);
         this.renderUI();
-        
+
         if (this.user) {
             this.startCloudSync();
         }
     },
 
     renderStats() {
-        const count    = Object.keys(this.state.currentDay.filledBoxes).length;
+        const count = Object.keys(this.state.currentDay.filledBoxes).length;
         const consumed = count * this.state.settings.increment;
-        const goal     = this.state.settings.dailyGoal;
+        const goal = this.state.settings.dailyGoal;
 
-        const consumedEl  = document.getElementById('consumed-val');
+        const consumedEl = document.getElementById('consumed-val');
         const remainingEl = document.getElementById('remaining-val');
-        const goalEl      = document.getElementById('goal-val');
-        const remLabel    = remainingEl.previousElementSibling;
+        const goalEl = document.getElementById('goal-val');
+        const remLabel = remainingEl.previousElementSibling;
 
         consumedEl.textContent = consumed.toLocaleString();
-        goalEl.textContent     = goal.toLocaleString();
+        goalEl.textContent = goal.toLocaleString();
 
         if (consumed > goal) {
             remainingEl.textContent = (consumed - goal).toLocaleString();
@@ -1439,9 +1455,9 @@ const NomBlox = {
     },
 
     renderProgressBar() {
-        const bar  = document.getElementById('progress-bar');
+        const bar = document.getElementById('progress-bar');
         const goal = this.state.settings.dailyGoal;
-        const inc  = this.state.settings.increment;
+        const inc = this.state.settings.increment;
 
         const counts = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
         Object.values(this.state.currentDay.filledBoxes).forEach(meal => {
@@ -1462,9 +1478,9 @@ const NomBlox = {
         const grid = document.getElementById('box-grid');
         const filled = this.state.currentDay.filledBoxes;
 
-        const goalBoxes   = Math.ceil(this.state.settings.dailyGoal / this.state.settings.increment);
-        const indices     = Object.keys(filled).map(Number);
-        const maxIdx      = indices.length > 0 ? Math.max(...indices) : -1;
+        const goalBoxes = Math.ceil(this.state.settings.dailyGoal / this.state.settings.increment);
+        const indices = Object.keys(filled).map(Number);
+        const maxIdx = indices.length > 0 ? Math.max(...indices) : -1;
         const filledCount = indices.length;
 
         let count = goalBoxes;
@@ -1502,7 +1518,7 @@ const NomBlox = {
 
     syncMealButtons() {
         const active = this.state.currentDay.activeMeal;
-        const inc    = this.state.settings.increment;
+        const inc = this.state.settings.increment;
 
         const counts = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
         Object.values(this.state.currentDay.filledBoxes).forEach(meal => {
@@ -1525,11 +1541,11 @@ const NomBlox = {
         const modal = document.getElementById('confirm-modal');
         document.getElementById('confirm-title').textContent = title;
         document.getElementById('confirm-message').textContent = message;
-        
+
         const okBtn = document.getElementById('confirm-ok');
         const cancelBtn = document.getElementById('confirm-cancel');
         const closeBtn = document.getElementById('close-confirm');
-        
+
         const cleanup = () => {
             modal.classList.remove('active');
             okBtn.removeEventListener('click', handleOk);
@@ -1538,22 +1554,22 @@ const NomBlox = {
             // Reset long-press flag in case this was triggered by a long-press
             this.isLongPress = false;
         };
-        
+
         const handleOk = () => {
             cleanup();
             onConfirm();
         };
-        
+
         const handleCancel = () => {
             cleanup();
         };
-        
+
         // Use addEventListener (not .onclick) so removeEventListener works correctly
         // and old handlers don't stack up across multiple showConfirm calls
         okBtn.addEventListener('click', handleOk);
         cancelBtn.addEventListener('click', handleCancel);
         closeBtn.addEventListener('click', handleCancel);
-        
+
         modal.classList.add('active');
     },
 
@@ -1636,7 +1652,7 @@ const NomBlox = {
                         this.renderUI();
                     }
                 }
-                
+
                 // Fix #3: Throttle to at most once every 5 seconds to prevent
                 // listener churn when the user alt-tabs or switches apps rapidly.
                 const MIN_RESYNC_MS = 5_000;
@@ -1686,10 +1702,10 @@ const NomBlox = {
 
         const startPress = (e) => {
             if (!e.target.classList.contains('box')) return;
-            
+
             // Prevent multiple timers if both touch and mouse events fire
             if (pressTimer) clearTimeout(pressTimer);
-            
+
             this.isLongPress = false;
             pressTimer = setTimeout(() => {
                 this.isLongPress = true;
@@ -1709,25 +1725,26 @@ const NomBlox = {
             }
         };
 
-        grid.addEventListener('mousedown',  startPress);
+        grid.addEventListener('mousedown', startPress);
         grid.addEventListener('touchstart', startPress, { passive: true });
-        grid.addEventListener('mouseup',    endPress);
-        grid.addEventListener('touchend',   endPress);
+        grid.addEventListener('mouseup', endPress);
+        grid.addEventListener('touchend', endPress);
         grid.addEventListener('touchcancel', endPress);
-        grid.addEventListener('touchmove',  endPress); // Clear timer if user scrolls
+        grid.addEventListener('touchmove', endPress); // Clear timer if user scrolls
         grid.addEventListener('mouseleave', endPress);
-        
+
         // Prevent context menu on boxes to allow for clean long-press
         grid.addEventListener('contextmenu', e => {
             if (e.target.classList.contains('box')) e.preventDefault();
         });
 
-        const modal      = document.getElementById('settings-modal');
-        const goalInput  = document.getElementById('daily-goal');
+        const modal = document.getElementById('settings-modal');
+        const goalInput = document.getElementById('daily-goal');
 
         document.getElementById('settings-btn').addEventListener('click', () => {
             goalInput.value = this.state.settings.dailyGoal;
             document.getElementById('cal-increment').value = this.state.settings.increment;
+            document.getElementById('app-theme').value = this.state.settings.theme || 'default';
             modal.classList.add('active');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
@@ -1744,11 +1761,12 @@ const NomBlox = {
 
         document.getElementById('save-settings').addEventListener('click', () => {
             const newGoal = parseInt(goalInput.value);
-            const newInc  = parseInt(document.getElementById('cal-increment').value);
-            
+            const newInc = parseInt(document.getElementById('cal-increment').value);
+            const newTheme = document.getElementById('app-theme').value;
+
             if (newGoal > 0 && newInc > 0) {
                 const oldInc = this.state.settings.increment;
-                
+
                 if (newInc !== oldInc) {
                     const totals = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
                     Object.values(this.state.currentDay.filledBoxes).forEach(meal => {
@@ -1768,7 +1786,9 @@ const NomBlox = {
 
                 this.state.settings.dailyGoal = newGoal;
                 this.state.settings.increment = newInc;
+                this.state.settings.theme = newTheme;
                 this.saveState();
+                this.applyTheme();
                 this.renderUI();
                 modal.classList.remove('active');
             }
@@ -1800,8 +1820,8 @@ const NomBlox = {
         // Debug Modal
         document.getElementById('debug-btn').addEventListener('click', () => this.handleDebugData());
         document.getElementById('close-debug').addEventListener('click', () => document.getElementById('debug-modal').classList.remove('active'));
-        document.getElementById('debug-modal').addEventListener('click', e => { 
-            if (e.target === document.getElementById('debug-modal')) document.getElementById('debug-modal').classList.remove('active'); 
+        document.getElementById('debug-modal').addEventListener('click', e => {
+            if (e.target === document.getElementById('debug-modal')) document.getElementById('debug-modal').classList.remove('active');
         });
         document.getElementById('copy-debug').addEventListener('click', () => {
             this.copyToClipboard(document.getElementById('debug-output').textContent);
