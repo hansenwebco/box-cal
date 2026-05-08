@@ -1,0 +1,143 @@
+/* ── Pixel Blox Theme ────────────────── */
+.theme-pixel {
+    --font-main: 'Press Start 2P', cursive;
+    --font-logo: 'Press Start 2P', cursive;
+    --radius-sm: 0px;
+    --radius-md: 0px;
+    --radius-lg: 0px;
+    --glass-bg: var(--surface);
+    --glass-border: hsla(0, 0%, 100%, 0.15);
+    --glass-shadow: 4px 4px 0px rgba(0, 0, 0, 1);
+    --transition: none;
+    --box-border-style: solid;
+    --font-size-adjust: 0.75;
+}
+
+/* Structural Overrides */
+.theme-pixel body {
+    font-size: calc(1rem * var(--font-size-adjust));
+}
+
+.theme-pixel .logo-text span {
+    text-shadow: 3px 3px 0px rgba(0, 0, 0, 0.8);
+}
+
+.theme-pixel .stat-value.over-limit {
+    text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.5);
+}
+
+.theme-pixel .meal-btn {
+    box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.5);
+    padding: 10px 4px;
+    gap: 4px;
+}
+
+.theme-pixel .meal-btn.active {
+    box-shadow: 3px 3px 0px var(--accent);
+}
+
+.theme-pixel .meal-dot {
+    display: none;
+}
+
+.theme-pixel .meal-header {
+    gap: 0;
+}
+
+/* Label Replacements */
+.theme-pixel #meal-breakfast .meal-label { font-size: 0; }
+.theme-pixel #meal-breakfast .meal-label::after { content: 'BREAK'; font-size: 0.72rem; visibility: visible; }
+
+.theme-pixel #meal-snacks .meal-label { font-size: 0; }
+.theme-pixel #meal-snacks .meal-label::after { content: 'SNACK'; font-size: 0.72rem; visibility: visible; }
+
+/* Settings / Log Fixes */
+.theme-pixel .form-group label { font-size: 0.65rem; }
+.theme-pixel .form-group select { font-size: 0.7rem; padding: 10px 8px; }
+.theme-pixel .number-input-container input { font-size: 0.7rem; }
+.theme-pixel .settings-user-info { font-size: 0.6rem; }
+.theme-pixel .btn { font-size: 0.5rem; padding: 10px; }
+
+.theme-pixel .history-month-label { font-size: 0.65rem; line-height: 1.4; }
+.theme-pixel .history-month-summary { gap: 4px; }
+.theme-pixel .history-month-days { font-size: 0.45rem; padding: 3px 5px; }
+.theme-pixel .history-month-avg { font-size: 0.5rem; }
+.theme-pixel .history-item-meta { gap: 4px; margin-top: 6px; }
+.theme-pixel .history-goal-badge { font-size: 0.45rem; padding: 2px 4px; }
+
+/* ── Pixel Art Icons (Pure CSS) ────────────────── */
+.pixel-heart {
+    display: none;
+    width: 4px;
+    height: 4px;
+    background: transparent;
+    position: relative;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.theme-pixel .pixel-heart {
+    display: block;
+    box-shadow: 
+        4px 0px #ff4d4d, 8px 0px #ff4d4d, 16px 0px #ff4d4d, 20px 0px #ff4d4d,
+        0px 4px #ff4d4d, 4px 4px #ff4d4d, 8px 4px #ff4d4d, 12px 4px #ff4d4d, 16px 4px #ff4d4d, 20px 4px #ff4d4d, 24px 4px #ff4d4d,
+        0px 8px #ff4d4d, 4px 8px #ff4d4d, 8px 8px #ff4d4d, 12px 8px #ff4d4d, 16px 8px #ff4d4d, 20px 8px #ff4d4d, 24px 8px #ff4d4d,
+        4px 12px #ff4d4d, 8px 12px #ff4d4d, 12px 12px #ff4d4d, 16px 12px #ff4d4d, 20px 12px #ff4d4d,
+        8px 16px #ff4d4d, 12px 16px #ff4d4d, 16px 16px #ff4d4d,
+        12px 20px #ff4d4d;
+}
+
+.pixel-trophy {
+    display: none;
+    width: 3px;
+    height: 3px;
+    background: transparent;
+    flex-shrink: 0;
+}
+
+.theme-pixel .pixel-trophy {
+    display: block;
+    box-shadow: 
+        4px 0 #ffd700, 8px 0 #ffd700, 12px 0 #ffd700, 16px 0 #ffd700,
+        4px 3px #ffd700, 8px 3px #ffd700, 12px 3px #ffd700, 16px 3px #ffd700,
+        0px 3px #ffd700, 20px 3px #ffd700,
+        0px 6px #ffd700, 4px 6px #ffd700, 8px 6px #ffd700, 12px 6px #ffd700, 16px 6px #ffd700, 20px 6px #ffd700,
+        4px 9px #ffd700, 8px 9px #ffd700, 12px 9px #ffd700, 16px 9px #ffd700,
+        8px 12px #ffd700, 12px 12px #ffd700,
+        8px 15px #ffd700, 12px 15px #ffd700,
+        4px 18px #ffd700, 8px 18px #ffd700, 12px 18px #ffd700, 16px 18px #ffd700;
+}
+
+.pixel-star {
+    display: none;
+    width: 3px;
+    height: 3px;
+    background: transparent;
+}
+
+.theme-pixel .pixel-star {
+    display: block;
+    box-shadow: 
+        9px 0 #ffd700, 12px 0 #ffd700,
+        9px 3px #ffd700, 12px 3px #ffd700,
+        3px 6px #ffd700, 6px 6px #ffd700, 9px 6px #ffd700, 12px 6px #ffd700, 15px 6px #ffd700, 18px 6px #ffd700,
+        0px 9px #ffd700, 3px 9px #ffd700, 6px 9px #ffd700, 9px 9px #ffd700, 12px 9px #ffd700, 15px 9px #ffd700, 18px 9px #ffd700, 21px 9px #ffd700,
+        3px 12px #ffd700, 6px 12px #ffd700, 9px 12px #ffd700, 12px 12px #ffd700, 15px 12px #ffd700, 18px 12px #ffd700,
+        6px 15px #ffd700, 9px 15px #ffd700, 12px 15px #ffd700, 15px 15px #ffd700,
+        6px 18px #ffd700, 15px 18px #ffd700;
+}
+
+.theme-pixel .stats-card-icon i,
+.theme-pixel .stats-record-label i {
+    display: none;
+}
+
+.theme-pixel .stats-card-icon,
+.theme-pixel .stats-record-label {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 24px;
+    height: 24px;
+    gap: 8px;
+}

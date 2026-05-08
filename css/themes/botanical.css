@@ -1,0 +1,47 @@
+/* ── Botanical Sketchbook Theme (Journal) ────────────────── */
+.theme-botanical {
+    --bg-dark: hsl(35, 30%, 88%); /* Aged Paper */
+    --surface: hsl(35, 25%, 85%);
+    --surface-light: hsl(35, 20%, 92%);
+    --text-main: hsl(160, 20%, 20%); /* Dark Forest Ink */
+    --text-muted: hsl(160, 10%, 40%);
+    --accent: hsl(160, 40%, 30%);
+    
+    --glass-bg: hsla(35, 30%, 92%, 0.9);
+    --glass-border: hsla(160, 20%, 20%, 0.15);
+    --glass-shadow: 2px 5px 15px rgba(0, 0, 0, 0.08);
+    
+    --breakfast: hsl(160, 40%, 30%);  /* Pine */
+    --lunch: hsl(30, 40%, 45%);      /* Terracotta */
+    --dinner: hsl(0, 30%, 45%);       /* Dried Rose */
+    --snacks: hsl(80, 30%, 45%);      /* Olive Leaf */
+}
+
+.theme-botanical body {
+    background-color: hsl(35, 20%, 80%);
+    background-image: url('https://www.transparenttextures.com/patterns/paper-fibers.png');
+}
+
+.theme-botanical .app-container {
+    box-shadow: 0 10px 30px rgba(0,0,0,0.05), inset 0 0 100px rgba(0,0,0,0.02);
+    border-left: 15px solid hsl(160, 20%, 25%); /* Book spine */
+}
+
+.theme-botanical .box {
+    border-radius: 2px;
+    border: 1px solid var(--text-muted);
+    background: transparent;
+    transform: rotate(calc(var(--i, 0) * 1deg)); /* Subtle jitter if we had --i */
+}
+
+.theme-botanical .box.filled {
+    background: var(--accent);
+    mask-image: radial-gradient(circle, black 50%, transparent 100%); /* Ink bleed effect */
+    opacity: 0.8;
+}
+
+.theme-botanical .logo-text {
+    font-family: 'Outfit', sans-serif;
+    font-style: italic;
+    font-weight: 300;
+}

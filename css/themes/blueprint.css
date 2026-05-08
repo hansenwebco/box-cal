@@ -1,0 +1,58 @@
+/* ── The Blueprint Theme (Architect) ────────────────── */
+.theme-blueprint {
+    --bg-dark: hsl(215, 80%, 25%); /* Blueprint Blue */
+    --surface: hsl(215, 80%, 30%);
+    --surface-light: hsl(215, 70%, 35%);
+    --text-main: #ffffff;
+    --text-muted: hsla(215, 100%, 90%, 0.6);
+    --accent: #ffffff;
+    
+    --glass-bg: hsla(215, 80%, 35%, 0.8);
+    --glass-border: hsla(215, 100%, 100%, 0.3);
+    --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    
+    --breakfast: #ffffff;
+    --lunch: hsl(190, 100%, 80%);
+    --dinner: hsl(45, 100%, 80%);
+    --snacks: hsl(145, 100%, 80%);
+}
+
+.theme-blueprint body {
+    background-color: var(--bg-dark);
+    background-image: 
+        linear-gradient(hsla(215, 100%, 100%, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, hsla(215, 100%, 100%, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.theme-blueprint .logo-text {
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.theme-blueprint .box {
+    border-radius: 0;
+    border: 1px solid hsla(215, 100%, 100%, 0.4);
+    background: transparent;
+}
+
+.theme-blueprint .box.filled {
+    background: white;
+    box-shadow: 0 0 10px white;
+}
+
+.theme-blueprint .box::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    width: 2px;
+    height: 2px;
+    background: white;
+}
+
+.theme-blueprint .progress-container {
+    border: 1px solid white;
+    border-radius: 0;
+}

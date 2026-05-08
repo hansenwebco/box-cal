@@ -1,0 +1,59 @@
+/* ── Virtual Pet Theme (Tamagotchi) ────────────────── */
+.theme-virtualpet {
+    --bg-dark: hsl(330, 100%, 95%); /* Soft Pink Shell */
+    --surface: #ffffff;
+    --surface-light: hsl(330, 100%, 98%);
+    --text-main: hsl(330, 60%, 30%);
+    --text-muted: hsl(330, 30%, 60%);
+    --accent: hsl(190, 80%, 50%); /* Bright Cyan Button */
+    
+    --glass-bg: rgba(255, 255, 255, 0.8);
+    --glass-border: hsl(330, 100%, 85%);
+    --glass-shadow: 0 10px 20px rgba(255, 105, 180, 0.2);
+    
+    --breakfast: hsl(330, 90%, 70%);  /* Strawberry */
+    --lunch: hsl(45, 100%, 70%);     /* Lemon */
+    --dinner: hsl(190, 80%, 70%);    /* Soda */
+    --snacks: hsl(100, 70%, 75%);    /* Melon */
+}
+
+.theme-virtualpet body {
+    background: radial-gradient(circle, hsl(330, 100%, 90%), hsl(330, 100%, 80%));
+}
+
+.theme-virtualpet .app-container {
+    border-radius: 50% 50% 45% 45% / 40% 40% 60% 60%;
+    border: 15px solid hsl(330, 100%, 75%);
+    background: var(--bg-dark);
+    padding: 40px 20px;
+    box-shadow: inset 0 0 30px hsla(330, 100%, 60%, 0.3), 0 20px 50px rgba(0,0,0,0.1);
+}
+
+.theme-virtualpet .box-grid {
+    background: #c5d3be; /* Classic LCD screen color */
+    padding: 15px;
+    border: 8px solid hsl(330, 20%, 80%);
+    border-radius: 10px;
+    box-shadow: inset 2px 2px 10px rgba(0,0,0,0.2);
+}
+
+.theme-virtualpet .box {
+    border-radius: 4px;
+    background: rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+.theme-virtualpet .box.filled {
+    background: #333; /* Pixel style */
+    border-radius: 2px;
+}
+
+.theme-virtualpet .meal-btn {
+    border-radius: 20px;
+    border: 3px solid transparent;
+}
+
+.theme-virtualpet .meal-btn.active {
+    border-color: var(--accent);
+    background: white;
+}

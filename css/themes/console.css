@@ -1,0 +1,85 @@
+/* ── Command Line (Terminal) Theme ────────────────── */
+.theme-console {
+    --font-main: 'JetBrains Mono', monospace;
+    --font-logo: 'JetBrains Mono', monospace;
+    --accent: #00ff41;
+    --bg-dark: #000000;
+    --surface: #0a0a0a;
+    --surface-light: #121212;
+    --text-main: #00ff41;
+    --text-muted: #008f11;
+    --glass-bg: #050505;
+    --glass-border: #008f11;
+    --glass-shadow: 0 0 20px rgba(0, 255, 65, 0.2);
+    --radius-sm: 0px;
+    --radius-md: 0px;
+    --radius-lg: 0px;
+    --transition: none;
+    --box-border-style: double;
+    --font-size-adjust: 0.9;
+}
+
+/* CRT Scanline Effect */
+.theme-console::before {
+    content: " ";
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    z-index: 9999;
+    background-size: 100% 4px, 3px 100%;
+    pointer-events: none;
+    opacity: 0.3;
+}
+
+.theme-console .logo-text span {
+    color: var(--text-main);
+    text-shadow: 0 0 10px var(--accent);
+    animation: terminal-flicker 0.15s infinite;
+}
+
+@keyframes terminal-flicker {
+    0% { opacity: 0.98; }
+    50% { opacity: 1; }
+    100% { opacity: 0.99; }
+}
+
+.theme-console .logo-text::before {
+    content: "> ";
+    color: var(--accent);
+}
+
+.theme-console .stat-value {
+    text-shadow: 0 0 5px var(--accent);
+}
+
+.theme-console .box.filled {
+    background-color: var(--accent) !important;
+    box-shadow: 0 0 10px var(--accent);
+    border-color: #ffffff !important;
+}
+
+.theme-console .meal-btn.active {
+    background: var(--accent);
+    color: #000;
+    box-shadow: 0 0 15px var(--accent);
+}
+
+.theme-console .meal-btn.active .meal-label,
+.theme-console .meal-btn.active .meal-cals {
+    color: #000;
+}
+
+.theme-console .progress-bar {
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+}
+
+.theme-console .btn {
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+}

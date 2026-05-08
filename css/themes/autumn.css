@@ -1,0 +1,35 @@
+/* ── Autumn Theme ────────────────── */
+.theme-autumn {
+    --bg-dark: hsl(25, 30%, 12%); /* Dark Wood */
+    --surface: hsl(25, 25%, 18%);
+    --surface-light: hsl(25, 20%, 24%);
+    --text-main: hsl(35, 80%, 95%);
+    --text-muted: hsl(25, 20%, 65%);
+    --accent: hsl(25, 85%, 55%); /* Burnt Orange */
+    
+    --glass-bg: hsla(25, 25%, 20%, 0.7);
+    --glass-border: hsla(25, 85%, 55%, 0.2);
+    --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    
+    --breakfast: hsl(45, 80%, 55%);  /* Golden Honey */
+    --lunch: hsl(25, 90%, 55%);     /* Pumpkin Orange */
+    --dinner: hsl(120, 40%, 35%);    /* Forest Green */
+    --snacks: hsl(350, 70%, 40%);    /* Deep Berry Red */
+}
+
+.theme-autumn body {
+    background: linear-gradient(to bottom, #2b1d16, #1a120b);
+}
+
+.theme-autumn .logo-text span {
+    color: var(--accent);
+}
+
+.theme-autumn .box.filled {
+    border-radius: 6px;
+    background-image: radial-gradient(circle at center, rgba(255,255,255,0.2) 0%, transparent 70%);
+}
+
+.theme-autumn .summary-card {
+    border-top: 3px solid var(--accent);
+}
