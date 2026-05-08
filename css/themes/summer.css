@@ -1,0 +1,36 @@
+/* ── Summer Theme ────────────────── */
+.theme-summer {
+    --bg-dark: hsl(200, 90%, 15%); /* Deep Ocean */
+    --surface: hsl(200, 80%, 20%);
+    --surface-light: hsl(200, 70%, 25%);
+    --text-main: #ffffff;
+    --text-muted: hsl(200, 30%, 75%);
+    --accent: hsl(45, 100%, 55%); /* Bright Sun Yellow */
+    
+    --glass-bg: hsla(200, 80%, 25%, 0.7);
+    --glass-border: hsla(45, 100%, 55%, 0.3);
+    --glass-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+    
+    --breakfast: hsl(45, 100%, 55%);  /* Sunlight */
+    --lunch: hsl(200, 100%, 60%);    /* Blue Water */
+    --dinner: hsl(15, 90%, 55%);     /* Sunset Orange */
+    --snacks: hsl(150, 80%, 50%);    /* Tropical Green */
+}
+
+.theme-summer body {
+    background: radial-gradient(circle at top right, hsl(200, 90%, 25%), var(--bg-dark));
+}
+
+.theme-summer .logo-text span {
+    color: var(--accent);
+    text-shadow: 0 0 15px hsla(45, 100%, 55%, 0.4);
+}
+
+.theme-summer .meal-btn.active {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.theme-summer .progress-bar {
+    background: linear-gradient(90deg, var(--accent), var(--dinner));
+}

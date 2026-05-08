@@ -32,20 +32,7 @@
     --box-border-style: solid;
 }
 
-.theme-pixel {
-    --font-main: 'Press Start 2P', cursive;
-    --font-logo: 'Press Start 2P', cursive;
-    --radius-sm: 0px;
-    --radius-md: 0px;
-    --radius-lg: 0px;
-    --glass-bg: var(--surface);
-    --glass-border: hsla(0, 0%, 100%, 0.15);
-    --glass-shadow: 4px 4px 0px rgba(0, 0, 0, 1);
-    --transition: none;
-    --box-border-style: solid;
-    --font-size-adjust: 0.75;
-    /* Scale down pixel text by 25% */
-}
+/* ── Reset & Base ──────────────────────────────── */
 
 * {
     margin: 0;
@@ -57,6 +44,33 @@
 html,
 body {
     overscroll-behavior-y: none;
+}
+
+#crt-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), 
+                linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+    z-index: 9999;
+    background-size: 100% 3px, 3px 100%;
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.theme-pixel #crt-overlay,
+.theme-console #crt-overlay {
+    display: block;
+    animation: crt-flicker 0.1s infinite;
+}
+
+@keyframes crt-flicker {
+    0% { opacity: 0.55; }
+    50% { opacity: 0.6; }
+    100% { opacity: 0.58; }
 }
 
 body {
@@ -122,9 +136,6 @@ header {
     text-shadow: none;
 }
 
-.theme-pixel .logo-text span {
-    text-shadow: 3px 3px 0px rgba(0, 0, 0, 0.8);
-}
 
 .date-display {
     display: flex;
@@ -468,9 +479,6 @@ header {
     text-shadow: none;
 }
 
-.theme-pixel .stat-value.over-limit {
-    text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.5);
-}
 
 .stat-divider {
     width: 1px;
@@ -555,10 +563,6 @@ header {
     justify-content: center;
 }
 
-.theme-pixel .meal-btn {
-    padding: 10px 4px;
-    gap: 4px;
-}
 
 /* Row 1: dot + label side by side */
 .meal-btn .meal-header {
@@ -583,26 +587,6 @@ header {
     line-height: 1;
 }
 
-/* Shorten labels for Pixel theme to prevent overflow */
-.theme-pixel #meal-breakfast .meal-label {
-    font-size: 0;
-}
-
-.theme-pixel #meal-breakfast .meal-label::after {
-    content: 'BREAK';
-    font-size: 0.72rem;
-    visibility: visible;
-}
-
-.theme-pixel #meal-snacks .meal-label {
-    font-size: 0;
-}
-
-.theme-pixel #meal-snacks .meal-label::after {
-    content: 'SNACK';
-    font-size: 0.72rem;
-    visibility: visible;
-}
 
 /* Row 2: calorie total */
 .meal-btn .meal-cals {
@@ -639,13 +623,6 @@ header {
     background: hsla(200, 85%, 55%, 0.12);
 }
 
-.theme-pixel .meal-dot {
-    display: none;
-}
-
-.theme-pixel .meal-header {
-    gap: 0;
-}
 
 #meal-lunch.active {
     border-color: var(--lunch);
@@ -683,18 +660,7 @@ header {
     white-space: nowrap;
 }
 
-.theme-pixel .settings-user-info {
-    font-size: 0.45rem;
-    padding: 8px;
-}
 
-.theme-pixel .meal-btn {
-    box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.5);
-}
-
-.theme-pixel .meal-btn.active {
-    box-shadow: 3px 3px 0px var(--accent);
-}
 
 .meal-btn:active {
     transform: scale(0.94);
@@ -1285,10 +1251,6 @@ header {
     font-weight: 800;
 }
 
-.theme-pixel .history-month-label {
-    font-size: 0.65rem;
-    line-height: 1.4;
-}
 
 .history-month-summary {
     display: flex;
@@ -1296,9 +1258,6 @@ header {
     gap: 12px;
 }
 
-.theme-pixel .history-month-summary {
-    gap: 4px;
-}
 
 .history-month-days {
     font-size: 0.65rem;
@@ -1318,9 +1277,6 @@ header {
     color: var(--accent);
 }
 
-.theme-pixel .history-month-avg {
-    font-size: 0.5rem;
-}
     font-variant-numeric: tabular-nums;
 }
 
@@ -1367,10 +1323,6 @@ header {
     margin-top: 4px;
 }
 
-.theme-pixel .history-item-meta {
-    gap: 4px;
-    margin-top: 6px;
-}
 .history-goal-badge {
     font-size: 0.68rem;
     font-weight: 800;
@@ -1379,10 +1331,6 @@ header {
     border-radius: 4px;
 }
 
-.theme-pixel .history-goal-badge {
-    font-size: 0.45rem;
-    padding: 2px 4px;
-}
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -1585,9 +1533,6 @@ header {
     font-weight: 600;
 }
 
-.theme-pixel .form-group label {
-    font-size: 0.5rem;
-}
 
 .settings-user-info {
     background: hsla(0, 0%, 100%, 0.03);
@@ -1610,9 +1555,6 @@ header {
     white-space: nowrap;
 }
 
-.theme-pixel .settings-user-info {
-    font-size: 0.6rem;
-}
 
 .settings-user-info i {
     color: #4ade80;
@@ -1829,6 +1771,7 @@ header {
     width: 100%;
 }
 
+
 /* Custom number input */
 .number-input-container {
     display: flex;
@@ -1851,6 +1794,7 @@ header {
     text-align: center;
     padding: 6px;
 }
+
 
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
@@ -1907,10 +1851,7 @@ input[type="number"] {
     color: white;
 }
 
-.theme-pixel .btn {
-    font-size: 0.5rem;
-    padding: 10px;
-}
+
 
 .btn-primary:hover {
     filter: brightness(1.12);

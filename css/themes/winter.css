@@ -1,0 +1,39 @@
+/* ── Winter Theme ────────────────── */
+.theme-winter {
+    --bg-dark: hsl(220, 40%, 10%); /* Midnight Ice */
+    --surface: hsl(220, 30%, 15%);
+    --surface-light: hsl(220, 25%, 20%);
+    --text-main: #e0f2fe;
+    --text-muted: hsl(220, 20%, 65%);
+    --accent: #7dd3fc; /* Ice Blue */
+    
+    --glass-bg: hsla(220, 30%, 20%, 0.6);
+    --glass-border: hsla(180, 100%, 100%, 0.15);
+    --glass-shadow: 0 10px 40px rgba(125, 211, 252, 0.1);
+    
+    --breakfast: #7dd3fc; /* Ice Blue */
+    --lunch: #f8fafc;    /* Pure Snow White */
+    --dinner: #1e40af;   /* Royal Blue */
+    --snacks: #ef4444;   /* Holly Red */
+}
+
+.theme-winter body {
+    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+}
+
+.theme-winter .logo-text span {
+    color: var(--accent);
+    text-shadow: 0 0 10px rgba(125, 211, 252, 0.5);
+}
+
+.theme-winter .summary-card {
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05);
+}
+
+.theme-winter .box.filled {
+    background: linear-gradient(135deg, #7dd3fc, #38bdf8) !important;
+    box-shadow: 0 0 10px rgba(125, 211, 252, 0.4);
+}

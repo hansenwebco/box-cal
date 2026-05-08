@@ -1,0 +1,40 @@
+/* ── Spring Theme ────────────────── */
+.theme-spring {
+    --bg-dark: hsl(150, 20%, 96%); /* Very light mint */
+    --surface: #ffffff;
+    --surface-light: hsl(150, 30%, 92%);
+    --text-main: hsl(150, 40%, 20%);
+    --text-muted: hsl(150, 20%, 50%);
+    --accent: hsl(330, 80%, 70%); /* Cherry Blossom Pink */
+    
+    --glass-bg: hsla(0, 0%, 100%, 0.8);
+    --glass-border: hsla(330, 80%, 70%, 0.2);
+    --glass-shadow: 0 10px 30px rgba(255, 182, 193, 0.2);
+    
+    --breakfast: hsl(80, 70%, 50%);  /* Fresh Lime */
+    --lunch: hsl(180, 60%, 50%);    /* Clear Cyan */
+    --dinner: hsl(330, 85%, 70%);   /* Cherry Pink */
+    --snacks: hsl(55, 90%, 60%);     /* Sunny Lemon */
+}
+
+.theme-spring body {
+    background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+    color: var(--text-main);
+}
+
+.theme-spring .logo-text span {
+    color: var(--accent);
+}
+
+.theme-spring .summary-card {
+    background: white;
+    border: 1px solid var(--glass-border);
+}
+
+.theme-spring .box {
+    border-radius: 12px;
+}
+
+.theme-spring .box.filled {
+    box-shadow: 0 0 15px var(--accent);
+}

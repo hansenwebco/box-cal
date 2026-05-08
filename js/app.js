@@ -1384,17 +1384,45 @@ const NomBlox = {
         this.syncMealButtons();
     },
 
-    applyTheme() {
-        const theme = this.state.settings.theme || 'default';
-        document.body.classList.remove('theme-pixel');
+    applyTheme(overrideTheme) {
+        try {
+            const theme = overrideTheme || this.state.settings.theme || 'default';
+            console.log('NomBlox: Applying theme:', theme);
+            
+            // Remove all current theme classes dynamically
+            const classes = Array.from(document.body.classList).filter(c => c.startsWith('theme-'));
+            classes.forEach(c => document.body.classList.remove(c));
+            
+            if (theme !== 'default') {
+                document.body.classList.add(`theme-${theme}`);
+            }
 
-        if (theme === 'pixel') {
-            document.body.classList.add('theme-pixel');
-        }
-
-        // Update Chart.js defaults for the theme if needed
-        if (this.statsChart) {
-            this.renderStatsChart(this.getFilteredHistory());
+            // Apply theme-specific chart colors with extra safety
+            if (window.Chart) {
+                try {
+                    // Adjust chart colors based on theme brightness
+                    const isLightTheme = ['spring'].includes(theme);
+                    
+                    if (theme === 'console') {
+                        Chart.defaults.color = '#00ff41';
+                        Chart.defaults.borderColor = 'rgba(0, 255, 65, 0.1)';
+                    } else if (isLightTheme) {
+                        Chart.defaults.color = 'rgba(0, 0, 0, 0.6)';
+                        Chart.defaults.borderColor = 'rgba(0, 0, 0, 0.05)';
+                    } else {
+                        Chart.defaults.color = 'rgba(255, 255, 255, 0.7)';
+                        Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
+                    }
+                    
+                    if (this.statsChart) {
+                        this.renderStatsChart(this.getFilteredHistory());
+                    }
+                } catch (chartErr) {
+                    console.warn('NomBlox: Chart theme update failed, but UI theme applied.', chartErr);
+                }
+            }
+        } catch (err) {
+            console.error('NomBlox: Critical error applying theme:', err);
         }
     },
 
@@ -1749,8 +1777,26 @@ const NomBlox = {
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
 
-        document.getElementById('close-settings').addEventListener('click', () => modal.classList.remove('active'));
-        modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+        // Live theme preview
+        const themeSelect = document.getElementById('app-theme');
+        if (themeSelect) {
+            themeSelect.addEventListener('change', (e) => {
+                console.log('Theme changed to:', e.target.value);
+                this.applyTheme(e.target.value);
+            });
+        }
+
+        document.getElementById('close-settings').addEventListener('click', () => {
+            this.applyTheme(); // Revert to saved theme
+            modal.classList.remove('active');
+        });
+
+        modal.addEventListener('click', e => { 
+            if (e.target === modal) {
+                this.applyTheme(); // Revert to saved theme
+                modal.classList.remove('active');
+            }
+        });
 
         document.getElementById('goal-plus').addEventListener('click', () => {
             goalInput.value = Math.min(10000, parseInt(goalInput.value) + 50);
