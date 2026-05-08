@@ -2206,6 +2206,24 @@ footer {
     font-weight: 700;
 }
 
+.haptic-label-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#test-haptic {
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    background: hsla(0, 0%, 100%, 0.05);
+    border: 1px solid var(--glass-border);
+}
+
+#test-haptic:active {
+    background: var(--accent);
+    color: white;
+}
+
 .switch {
     position: relative;
     display: inline-block;
