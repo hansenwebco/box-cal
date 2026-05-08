@@ -92,11 +92,30 @@ const NomBlox = {
 
             if (user) {
                 console.log("Auth state changed: User logged in", user.email);
+                
+                // PostHog: Identify user and track login
+                if (window.posthog) {
+                    posthog.identify(user.uid, {
+                        email: user.email,
+                        display_name: user.displayName || '',
+                        provider: user.providerData[0]?.providerId || 'unknown'
+                    });
+                    posthog.capture('user_logged_in', {
+                        method: user.providerData[0]?.providerId || 'unknown'
+                    });
+                }
+
                 this.startCloudSync();
                 this.fetchHistory(true); // Load history once on login
                 document.getElementById('auth-modal').classList.remove('active');
             } else {
                 console.log("Auth state changed: User logged out");
+                
+                // PostHog: Reset on logout
+                if (window.posthog) {
+                    posthog.reset();
+                }
+
                 // Unsubscribe all listeners and reset tracking state on logout
                 if (this.unsubscribeDay) { this.unsubscribeDay(); this.unsubscribeDay = null; }
                 if (this.unsubscribeSettings) { this.unsubscribeSettings(); this.unsubscribeSettings = null; }
@@ -189,6 +208,9 @@ const NomBlox = {
 
         // Update in-memory history for stats/history modal consistency
         this.updateHistoryEntry(saveDate, count);
+
+        // PostHog: Track data restored
+        if (window.posthog) posthog.capture('data_restored');
 
         // Legacy support / overall metadata
         localStorage.setItem('nomblox-last-updated', this.state.lastUpdated);
@@ -515,8 +537,10 @@ const NomBlox = {
         try {
             if (isSignup) {
                 await createUserWithEmailAndPassword(auth, email, pass);
+                if (window.posthog) posthog.capture('user_signed_up', { method: 'email' });
             } else {
                 await signInWithEmailAndPassword(auth, email, pass);
+                // Identification happens in setupAuthListener
             }
         } catch (e) {
             console.error("Auth failed:", e);
@@ -1617,6 +1641,16 @@ const NomBlox = {
         this.saveState();
         this.renderUI();
 
+        // PostHog: Track box toggle
+        if (window.posthog) {
+            posthog.capture('box_toggled', {
+                index: index,
+                meal: this.state.currentDay.activeMeal,
+                action: filled[index] ? 'filled' : 'cleared',
+                date: this.viewingDate
+            });
+        }
+
         const boxes = document.querySelectorAll('.box');
         if (boxes[index]) {
             boxes[index].classList.remove('pop');
@@ -1633,6 +1667,11 @@ const NomBlox = {
         this.state.currentDay.filledBoxes = {};
         this.saveState();
         this.renderUI();
+        
+        // PostHog: Track day reset
+        if (window.posthog) {
+            posthog.capture('day_reset', { date: this.viewingDate });
+        }
     },
 
     // ── Event Listeners ────────────────────────────────
@@ -1790,6 +1829,11 @@ const NomBlox = {
             themeSelect.addEventListener('change', (e) => {
                 console.log('Theme changed to:', e.target.value);
                 this.applyTheme(e.target.value);
+
+                // PostHog: Track theme preview
+                if (window.posthog) {
+                    posthog.capture('theme_previewed', { theme: e.target.value });
+                }
             });
         }
 
@@ -1843,6 +1887,23 @@ const NomBlox = {
                 this.state.settings.theme = newTheme;
                 this.state.settings.haptic = newHaptic;
                 this.saveState();
+                
+                // PostHog: Track settings update
+                if (window.posthog) {
+                    posthog.capture('settings_updated', {
+                        goal: newGoal,
+                        increment: newInc,
+                        theme: newTheme,
+                        haptic: newHaptic
+                    });
+                    // Also update person properties
+                    posthog.setPersonProperties({
+                        preferred_theme: newTheme,
+                        daily_goal: newGoal,
+                        increment: newInc
+                    });
+                }
+
                 this.applyTheme();
                 this.renderUI();
                 modal.classList.remove('active');
@@ -1867,6 +1928,9 @@ const NomBlox = {
             this.fetchHistory();
             historyModal.classList.add('active');
             if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            // PostHog: Track history viewed
+            if (window.posthog) posthog.capture('history_viewed');
         });
         // History Modal close
         document.getElementById('close-history').addEventListener('click', () => historyModal.classList.remove('active'));
@@ -1883,8 +1947,14 @@ const NomBlox = {
         });
 
         // Backup & Restore
-        document.getElementById('backup-btn').addEventListener('click', () => this.backupData());
-        document.getElementById('restore-btn').addEventListener('click', () => this.restoreData());
+        document.getElementById('backup-btn').addEventListener('click', () => {
+            this.backupData();
+            if (window.posthog) posthog.capture('data_backed_up');
+        });
+        document.getElementById('restore-btn').addEventListener('click', () => {
+            this.restoreData();
+            // restore capture happens in handleRestoreFile
+        });
         document.getElementById('restore-input').addEventListener('change', (e) => this.handleRestoreFile(e));
 
         // Delete All Data button
