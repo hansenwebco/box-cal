@@ -1,0 +1,36 @@
+/* ── Secret Garden Theme (Overgrown Moss) ────────────────── */
+.theme-garden {
+    --bg-dark: hsl(140, 40%, 12%); /* Deep Moss */
+    --surface: hsl(140, 35%, 18%);
+    --surface-light: hsl(140, 30%, 22%);
+    --text-main: hsl(140, 20%, 90%);
+    --text-muted: hsl(140, 10%, 60%);
+    --accent: hsl(45, 80%, 70%); /* Sunbeams */
+    
+    --glass-bg: hsla(140, 40%, 18%, 0.8);
+    --glass-border: hsla(140, 80%, 70%, 0.1);
+    --glass-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    
+    --breakfast: hsl(140, 60%, 50%);  /* Fresh Leaf */
+    --lunch: hsl(280, 50%, 65%);     /* Wildflower Purple */
+    --dinner: hsl(340, 60%, 60%);    /* Rose Pink */
+    --snacks: hsl(45, 90%, 60%);     /* Golden Pollen */
+}
+
+.theme-garden body {
+    background: linear-gradient(135deg, hsl(140, 40%, 15%), hsl(140, 50%, 5%));
+}
+
+.theme-garden .box {
+    border-radius: 50% 45% 55% 48%; /* Organic blob shape */
+    border: 2px solid hsla(140, 100%, 100%, 0.05);
+}
+
+.theme-garden .box.filled {
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 0 15px var(--accent)33;
+}
+
+.theme-garden .progress-bar {
+    border-radius: 20px;
+    height: 10px;
+}

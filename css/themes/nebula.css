@@ -1,0 +1,45 @@
+/* ── Galactic Observatory Theme (Cosmic) ────────────────── */
+.theme-nebula {
+    --bg-dark: hsl(260, 50%, 5%);
+    --surface: hsl(260, 40%, 10%);
+    --surface-light: hsl(260, 30%, 15%);
+    --text-main: #ffffff;
+    --text-muted: hsl(260, 20%, 70%);
+    --accent: hsl(280, 100%, 70%); /* Nebula Purple */
+    
+    --glass-bg: hsla(260, 50%, 10%, 0.7);
+    --glass-border: hsla(280, 100%, 70%, 0.2);
+    --glass-shadow: 0 0 30px hsla(280, 100%, 70%, 0.1);
+    
+    --breakfast: hsl(280, 100%, 70%);
+    --lunch: hsl(200, 100%, 70%);
+    --dinner: hsl(320, 100%, 70%);
+    --snacks: hsl(160, 100%, 70%);
+}
+
+.theme-nebula body {
+    background-color: var(--bg-dark);
+    background-image: 
+        radial-gradient(white, rgba(255,255,255,.2) 2px, transparent 40px),
+        radial-gradient(white, rgba(255,255,255,.15) 1px, transparent 30px),
+        radial-gradient(white, rgba(255,255,255,.1) 2px, transparent 40px);
+    background-size: 550px 550px, 350px 350px, 250px 250px;
+    background-position: 0 0, 40px 60px, 130px 270px;
+}
+
+.theme-nebula .box {
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05);
+}
+
+.theme-nebula .box.filled {
+    background: white;
+    box-shadow: 0 0 15px white, 0 0 30px var(--accent);
+}
+
+.theme-nebula .logo-text span {
+    background: linear-gradient(to right, #fff, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}

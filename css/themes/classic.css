@@ -1,0 +1,67 @@
+/* ── Classic OS Theme (90s Desktop) ────────────────── */
+.theme-classic {
+    --bg-dark: #c0c0c0; /* Classic Grey */
+    --surface: #d4d0c8;
+    --surface-light: #ffffff;
+    --text-main: #000000;
+    --text-muted: #808080;
+    --accent: #000080; /* Navy Title Bar */
+    
+    --glass-bg: #d4d0c8;
+    --glass-border: #ffffff;
+    --glass-shadow: 2px 2px 0px #000;
+    
+    --breakfast: #800000; /* Dark Red */
+    --lunch: #008000;    /* Dark Green */
+    --dinner: #000080;   /* Dark Blue */
+    --snacks: #808000;   /* Olive */
+}
+
+.theme-classic body {
+    background-color: #3a6ea5; /* Classic Win95 Teal */
+}
+
+.theme-classic .app-container {
+    border: 2px solid;
+    border-color: #ffffff #808080 #808080 #ffffff;
+    background: #c0c0c0;
+    padding: 4px;
+}
+
+.theme-classic header {
+    background: linear-gradient(90deg, #000080, #1084d0);
+    color: white;
+    padding: 4px 8px;
+    margin-bottom: 10px;
+}
+
+.theme-classic .logo-text, .theme-classic .logo-text span {
+    color: white;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+.theme-classic .box {
+    border-radius: 0;
+    border: 2px solid;
+    border-color: #808080 #ffffff #ffffff #808080;
+    background: #ffffff;
+}
+
+.theme-classic .box.filled {
+    border-color: #404040 #d4d0c8 #d4d0c8 #404040;
+}
+
+.theme-classic .btn, .theme-classic .meal-btn {
+    border-radius: 0;
+    border: 2px solid;
+    border-color: #ffffff #808080 #808080 #ffffff;
+    background: #c0c0c0;
+    color: black;
+}
+
+.theme-classic .btn:active, .theme-classic .meal-btn.active {
+    border-color: #808080 #ffffff #ffffff #808080;
+    padding-top: 2px;
+    padding-left: 2px;
+}

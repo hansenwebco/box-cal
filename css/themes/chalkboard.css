@@ -1,0 +1,46 @@
+/* ── Coffee Shop Chalkboard Theme ────────────────── */
+.theme-chalkboard {
+    --bg-dark: #222222; /* Slate/Chalkboard */
+    --surface: #2a2a2a;
+    --surface-light: #333333;
+    --text-main: #ffffff;
+    --text-muted: rgba(255, 255, 255, 0.5);
+    --accent: #f0e68c; /* Khaki/Chalk Yellow */
+    
+    --glass-bg: rgba(40, 40, 40, 0.9);
+    --glass-border: rgba(255, 255, 255, 0.2);
+    --glass-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    
+    --breakfast: #ffffff; /* White Chalk */
+    --lunch: #add8e6;    /* Blue Chalk */
+    --dinner: #ffb6c1;   /* Pink Chalk */
+    --snacks: #90ee90;   /* Green Chalk */
+}
+
+.theme-chalkboard body {
+    background-color: #1a1a1a;
+    background-image: url('https://www.transparenttextures.com/patterns/dark-matter.png');
+}
+
+.theme-chalkboard .logo-text {
+    font-family: 'Outfit', cursive;
+    text-shadow: 1px 1px 2px rgba(255,255,255,0.2);
+}
+
+.theme-chalkboard .box {
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 0;
+    box-shadow: inset 0 0 5px rgba(255,255,255,0.1);
+}
+
+.theme-chalkboard .box.filled {
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent)66;
+    border: 2px solid white;
+}
+
+.theme-chalkboard .stat-label {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+}

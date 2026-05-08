@@ -1,0 +1,49 @@
+/* ── Firefly Night Theme (Whimsical Dark) ────────────────── */
+.theme-firefly {
+    --bg-dark: hsl(230, 35%, 7%);
+    --surface: hsl(230, 30%, 12%);
+    --surface-light: hsl(230, 25%, 18%);
+    --text-main: hsl(230, 10%, 90%);
+    --text-muted: hsl(230, 10%, 60%);
+    --accent: hsl(50, 100%, 70%); /* Firefly Glow */
+    
+    --glass-bg: hsla(230, 35%, 12%, 0.8);
+    --glass-border: hsla(50, 100%, 70%, 0.1);
+    --glass-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+    
+    --breakfast: hsl(50, 100%, 70%);  /* Soft Yellow */
+    --lunch: hsl(180, 80%, 60%);     /* Cyan Glow */
+    --dinner: hsl(280, 70%, 70%);    /* Purple Glow */
+    --snacks: hsl(120, 60%, 70%);    /* Green Glow */
+}
+
+.theme-firefly body {
+    background: radial-gradient(circle at center, hsl(230, 35%, 15%), var(--bg-dark));
+}
+
+.theme-firefly .box {
+    border: 1px solid hsla(0, 0%, 100%, 0.05);
+    background: hsla(0, 0%, 100%, 0.02);
+}
+
+.theme-firefly .box.filled {
+    background: var(--accent);
+    box-shadow: 0 0 15px var(--accent), 0 0 30px var(--accent)44;
+    border: none;
+    animation: firefly-pulse 3s infinite ease-in-out;
+}
+
+@keyframes firefly-pulse {
+    0%, 100% { opacity: 0.8; transform: scale(0.95); }
+    50% { opacity: 1; transform: scale(1.05); }
+}
+
+.theme-firefly .progress-bar {
+    filter: blur(2px);
+    opacity: 0.8;
+}
+
+.theme-firefly .logo-text span {
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--accent);
+}

@@ -1401,11 +1401,11 @@ const NomBlox = {
             if (window.Chart) {
                 try {
                     // Adjust chart colors based on theme brightness
-                    const isLightTheme = ['spring'].includes(theme);
+                    const isLightTheme = ['spring', 'botanical', 'classic', 'virtualpet', 'dmg'].includes(theme);
                     
-                    if (theme === 'console') {
-                        Chart.defaults.color = '#00ff41';
-                        Chart.defaults.borderColor = 'rgba(0, 255, 65, 0.1)';
+                    if (theme === 'console' || theme === 'dmg') {
+                        Chart.defaults.color = theme === 'console' ? '#00ff41' : '#333';
+                        Chart.defaults.borderColor = theme === 'console' ? 'rgba(0, 255, 65, 0.1)' : 'rgba(0, 0, 0, 0.05)';
                     } else if (isLightTheme) {
                         Chart.defaults.color = 'rgba(0, 0, 0, 0.6)';
                         Chart.defaults.borderColor = 'rgba(0, 0, 0, 0.05)';
